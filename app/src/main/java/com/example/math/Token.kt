@@ -15,8 +15,24 @@ enum class AngleMode {
     DEG, RAD, GRAD
 }
 
-class Tokenizer(private val input: String) {
+class Tokenizer(rawInput: String) {
+    private val input: String = normalize(rawInput)
     private var index = 0
+
+    companion object {
+        fun normalize(s: String): String {
+            return s
+                .replace("sin⁻¹", "asin")
+                .replace("cos⁻¹", "acos")
+                .replace("tan⁻¹", "atan")
+                .replace("sin^-1", "asin")
+                .replace("cos^-1", "acos")
+                .replace("tan^-1", "atan")
+                .replace("×", "*")
+                .replace("÷", "/")
+                .replace("−", "-")
+        }
+    }
 
     fun tokenize(): List<Token> {
         val tokens = mutableListOf<Token>()

@@ -27,7 +27,9 @@ data class CalculatorUiState(
     val hapticEnabled: Boolean = true,
     val appTheme: AppThemeSetting = AppThemeSetting.GRAPHITE,
     val darkMode: DarkModeSetting = DarkModeSetting.DARK,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val previousCalculation: String? = null,
+    val isResultJustEvaluated: Boolean = false
 )
 
 class CalcViewModel(application: Application) : AndroidViewModel(application) {
@@ -45,14 +47,24 @@ class CalcViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onKeyInput(input: String) {
         _uiState.update { current ->
-            val newExpr = if (current.expression == "0" && input !in "+-×*÷/^%") {
-                input
-            } else {
-                current.expression + input
+            val isOperator = input in "+-×*÷/^%"
+            val newExpr = when {
+                current.isResultJustEvaluated -> {
+                    if (isOperator) {
+                        // Continue calculating with previous result
+                        current.expression + input
+                    } else {
+                        // Replace previous result with new input
+                        input
+                    }
+                }
+                current.expression == "0" && !isOperator -> input
+                else -> current.expression + input
             }
             current.copy(
                 expression = newExpr,
-                errorMessage = null
+                errorMessage = null,
+                isResultJustEvaluated = false
             )
         }
         evaluatePreview()
@@ -60,7 +72,9 @@ class CalcViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onBackspace() {
         _uiState.update { current ->
-            if (current.expression.isNotEmpty()) {
+            if (current.isResultJustEvaluated) {
+                current.copy(isResultJustEvaluated = false)
+            } else if (current.expression.isNotEmpty()) {
                 val newExpr = current.expression.dropLast(1)
                 current.copy(expression = newExpr, errorMessage = null)
             } else current
@@ -69,16 +83,25 @@ class CalcViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onClear() {
-        _uiState.update { it.copy(expression = "", resultPreview = "0", exactResult = "", errorMessage = null) }
+        _uiState.update {
+            it.copy(
+                expression = "",
+                resultPreview = "0",
+                exactResult = "",
+                errorMessage = null,
+                previousCalculation = null,
+                isResultJustEvaluated = false
+            )
+        }
     }
 
     fun onToggleSign() {
         val expr = _uiState.value.expression
         if (expr.isEmpty()) return
         if (expr.startsWith("-")) {
-            _uiState.update { it.copy(expression = expr.removePrefix("-")) }
+            _uiState.update { it.copy(expression = expr.removePrefix("-"), isResultJustEvaluated = false) }
         } else {
-            _uiState.update { it.copy(expression = "-($expr)") }
+            _uiState.update { it.copy(expression = "-($expr)", isResultJustEvaluated = false) }
         }
         evaluatePreview()
     }
@@ -106,26 +129,32 @@ class CalcViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onEquals() {
         val current = _uiState.value
-        if (current.expression.trim().isEmpty()) return
+        val originalExpr = current.expression.trim()
+        if (originalExpr.isEmpty()) return
 
         evaluator.angleMode = current.angleMode
-        val res = evaluator.evaluate(current.expression)
+        val res = evaluator.evaluate(originalExpr)
 
         if (res.isSuccess) {
             val formatted = res.formattedDecimal(current.precision)
             val exact = res.exactText
+            val chosenResult = if (current.isExactMode && exact.isNotEmpty()) exact else formatted
+
             _uiState.update {
                 it.copy(
-                    resultPreview = formatted,
+                    expression = chosenResult,
+                    resultPreview = chosenResult,
                     exactResult = exact,
+                    previousCalculation = originalExpr,
+                    isResultJustEvaluated = true,
                     errorMessage = null
                 )
             }
             // Persist to Room
             viewModelScope.launch {
                 repository.addHistory(
-                    expression = current.expression,
-                    result = if (current.isExactMode && exact.isNotEmpty()) exact else formatted,
+                    expression = originalExpr,
+                    result = chosenResult,
                     category = if (current.jeeModeEnabled) "JEE" else "General",
                     angleMode = current.angleMode.name
                 )

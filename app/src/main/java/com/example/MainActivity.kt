@@ -183,6 +183,21 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        CalcScreenDestination.ORGANIC_CHEM -> {
+                            OrganicChemistryScreen(
+                                onBack = { currentScreen = CalcScreenDestination.CALCULATOR },
+                                onSaveToNotebook = { title, calc, res ->
+                                    viewModel.addNote(
+                                        title = title,
+                                        calculationText = calc,
+                                        result = res,
+                                        note = "",
+                                        category = "Organic Chem"
+                                    )
+                                }
+                            )
+                        }
+
                         CalcScreenDestination.UNIT_CONVERTER -> {
                             UnitConverterScreen(
                                 onBack = { currentScreen = CalcScreenDestination.CALCULATOR },

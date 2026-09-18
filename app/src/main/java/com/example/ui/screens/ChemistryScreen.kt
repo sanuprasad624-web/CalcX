@@ -17,6 +17,7 @@ import com.example.engine.ChemistryEngine
 
 enum class ChemSubTool(val label: String) {
     MOLAR_MASS("Molar Mass"),
+    ORGANIC_CHEM("Organic Chem"),
     PH_BUFFER("pH & Buffers"),
     NERNST("Nernst Eq"),
     THERMO("Gibbs ΔG")
@@ -62,6 +63,7 @@ fun ChemistryScreen(
             Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                 when (selectedTool) {
                     ChemSubTool.MOLAR_MASS -> MolarMassView(onSaveToNotebook)
+                    ChemSubTool.ORGANIC_CHEM -> OrganicChemistryContent(onSaveToNotebook)
                     ChemSubTool.PH_BUFFER -> PhBufferView(onSaveToNotebook)
                     ChemSubTool.NERNST -> NernstView(onSaveToNotebook)
                     ChemSubTool.THERMO -> ThermoView(onSaveToNotebook)

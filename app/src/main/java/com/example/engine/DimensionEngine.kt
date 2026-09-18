@@ -86,23 +86,46 @@ object DimensionEngine {
         KnownQuantity("Velocity / Speed", Dimension(l = 1, t = -1), "m/s"),
         KnownQuantity("Acceleration", Dimension(l = 1, t = -2), "m/s²"),
         KnownQuantity("Force", Dimension(m = 1, l = 1, t = -2), "N (kg·m/s²)"),
-        KnownQuantity("Work / Energy", Dimension(m = 1, l = 2, t = -2), "J (N·m)"),
+        KnownQuantity("Work / Energy / Heat", Dimension(m = 1, l = 2, t = -2), "J (N·m)"),
         KnownQuantity("Power", Dimension(m = 1, l = 2, t = -3), "W (J/s)"),
-        KnownQuantity("Pressure / Stress", Dimension(m = 1, l = -1, t = -2), "Pa (N/m²)"),
+        KnownQuantity("Pressure / Stress / Modulus", Dimension(m = 1, l = -1, t = -2), "Pa (N/m²)"),
         KnownQuantity("Linear Momentum / Impulse", Dimension(m = 1, l = 1, t = -1), "kg·m/s"),
-        KnownQuantity("Torque", Dimension(m = 1, l = 2, t = -2), "N·m"),
+        KnownQuantity("Torque / Moment of Force", Dimension(m = 1, l = 2, t = -2), "N·m"),
+        KnownQuantity("Angular Momentum", Dimension(m = 1, l = 2, t = -1), "J·s (kg·m²/s)"),
+        KnownQuantity("Moment of Inertia", Dimension(m = 1, l = 2), "kg·m²"),
+        KnownQuantity("Density", Dimension(m = 1, l = -3), "kg/m³"),
+        KnownQuantity("Frequency / Angular Velocity", Dimension(t = -1), "Hz / rad/s"),
         KnownQuantity("Gravitational Constant (G)", Dimension(m = -1, l = 3, t = -2), "N·m²/kg²"),
         KnownQuantity("Planck Constant (h)", Dimension(m = 1, l = 2, t = -1), "J·s"),
-        KnownQuantity("Surface Tension", Dimension(m = 1, t = -2), "N/m"),
-        KnownQuantity("Viscosity (η)", Dimension(m = 1, l = -1, t = -1), "Pa·s"),
+        KnownQuantity("Surface Tension / Spring Constant", Dimension(m = 1, t = -2), "N/m"),
+        KnownQuantity("Coefficient of Viscosity (η)", Dimension(m = 1, l = -1, t = -1), "Pa·s"),
         KnownQuantity("Electric Charge", Dimension(t = 1, i = 1), "C (A·s)"),
-        KnownQuantity("Electric Potential / Voltage", Dimension(m = 1, l = 2, t = -3, i = -1), "V"),
+        KnownQuantity("Electric Current", Dimension(i = 1), "A"),
+        KnownQuantity("Electric Potential / Voltage / EMF", Dimension(m = 1, l = 2, t = -3, i = -1), "V"),
         KnownQuantity("Electric Resistance", Dimension(m = 1, l = 2, t = -3, i = -2), "Ω"),
         KnownQuantity("Capacitance", Dimension(m = -1, l = -2, t = 4, i = 2), "F"),
-        KnownQuantity("Magnetic Field (B)", Dimension(m = 1, t = -2, i = -1), "T")
+        KnownQuantity("Magnetic Field / Induction (B)", Dimension(m = 1, t = -2, i = -1), "T"),
+        KnownQuantity("Magnetic Flux (Φ)", Dimension(m = 1, l = 2, t = -2, i = -1), "Wb"),
+        KnownQuantity("Self / Mutual Inductance (L)", Dimension(m = 1, l = 2, t = -2, i = -2), "H"),
+        KnownQuantity("Permittivity of Free Space (ε₀)", Dimension(m = -1, l = -3, t = 4, i = 2), "F/m"),
+        KnownQuantity("Permeability of Free Space (μ₀)", Dimension(m = 1, l = 1, t = -2, i = -2), "H/m"),
+        KnownQuantity("Specific Heat Capacity", Dimension(l = 2, t = -2, th = -1), "J/(kg·K)"),
+        KnownQuantity("Thermal Conductivity (k)", Dimension(m = 1, l = 1, t = -3, th = -1), "W/(m·K)"),
+        KnownQuantity("Stefan-Boltzmann Constant (σ)", Dimension(m = 1, t = -3, th = -4), "W/(m²·K⁴)"),
+        KnownQuantity("Universal Gas Constant (R) / Boltzmann (k_B)", Dimension(m = 1, l = 2, t = -2, th = -1), "J/(mol·K) / J/K")
     )
 
     fun findMatches(dim: Dimension): List<KnownQuantity> {
         return KNOWN_QUANTITIES.filter { it.dimension == dim }
+    }
+
+    fun searchQuantities(query: String): List<KnownQuantity> {
+        val trimmed = query.trim().lowercase()
+        if (trimmed.isEmpty()) return KNOWN_QUANTITIES
+        return KNOWN_QUANTITIES.filter {
+            it.name.lowercase().contains(trimmed) ||
+                    it.siUnit.lowercase().contains(trimmed) ||
+                    it.dimension.toFormattedString().lowercase().contains(trimmed)
+        }
     }
 }

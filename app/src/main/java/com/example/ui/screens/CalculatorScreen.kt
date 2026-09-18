@@ -29,6 +29,7 @@ enum class CalcScreenDestination {
     JEE_TOOLKIT,
     PHYSICS,
     CHEMISTRY,
+    ORGANIC_CHEM,
     UNIT_CONVERTER,
     MATRIX,
     PROGRAMMER,
@@ -175,6 +176,14 @@ fun CalculatorScreen(
                 }
                 item {
                     AssistChip(
+                        onClick = { onNavigate(CalcScreenDestination.ORGANIC_CHEM) },
+                        label = { Text("Organic Chem") },
+                        leadingIcon = { Icon(Icons.Default.Biotech, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        modifier = Modifier.testTag("chip_organic_chemistry")
+                    )
+                }
+                item {
+                    AssistChip(
                         onClick = { onNavigate(CalcScreenDestination.UNIT_CONVERTER) },
                         label = { Text("Converter") },
                         leadingIcon = { Icon(Icons.Default.SwapHoriz, contentDescription = null, modifier = Modifier.size(18.dp)) },
@@ -252,6 +261,7 @@ fun CalculatorScreen(
                 onToggleAngleMode = onToggleAngleMode,
                 onToggleExactMode = onToggleExactMode,
                 onSaveToNotebook = { showSaveDialog = true },
+                previousCalculation = uiState.previousCalculation,
                 modifier = Modifier.weight(1f)
             )
 

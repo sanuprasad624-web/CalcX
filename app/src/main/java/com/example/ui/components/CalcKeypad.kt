@@ -117,18 +117,18 @@ fun CalcKeypad(
                         modifier = Modifier.weight(1f)
                     )
                     SciButton(
-                        text = if (isInvMode) "asin" else "sin",
-                        onClick = { performHaptic(); onKeyInput(if (isInvMode) "asin(" else "sin(") },
+                        text = if (isInvMode) "sin⁻¹" else "sin",
+                        onClick = { performHaptic(); onKeyInput(if (isInvMode) "sin⁻¹(" else "sin(") },
                         modifier = Modifier.weight(1f)
                     )
                     SciButton(
-                        text = if (isInvMode) "acos" else "cos",
-                        onClick = { performHaptic(); onKeyInput(if (isInvMode) "acos(" else "cos(") },
+                        text = if (isInvMode) "cos⁻¹" else "cos",
+                        onClick = { performHaptic(); onKeyInput(if (isInvMode) "cos⁻¹(" else "cos(") },
                         modifier = Modifier.weight(1f)
                     )
                     SciButton(
-                        text = if (isInvMode) "atan" else "tan",
-                        onClick = { performHaptic(); onKeyInput(if (isInvMode) "atan(" else "tan(") },
+                        text = if (isInvMode) "tan⁻¹" else "tan",
+                        onClick = { performHaptic(); onKeyInput(if (isInvMode) "tan⁻¹(" else "tan(") },
                         modifier = Modifier.weight(1f)
                     )
                     SciButton(

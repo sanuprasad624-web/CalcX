@@ -13,14 +13,16 @@ class ExpressionEvaluator(
             return MathResult(0.0, Fraction.ZERO, "0")
         }
 
+        // Automatically balance unclosed parentheses so functions show results immediately
+        val balanced = balanceParentheses(trimmed)
+
         return try {
-            val rawTokens = Tokenizer(trimmed).tokenize()
+            val rawTokens = Tokenizer(balanced).tokenize()
             if (rawTokens.isEmpty()) {
                 return MathResult(0.0, Fraction.ZERO, "0")
             }
 
             // Insert implicit multiplication where needed
-            // e.g., Number followed by OpenParen, Number followed by Identifier, CloseParen followed by OpenParen/Number
             val tokens = insertImplicitMultiplication(rawTokens)
 
             val parser = Parser(tokens, angleMode)
@@ -34,7 +36,26 @@ class ExpressionEvaluator(
                 null
             }
 
+            // Check if expression is an inverse trig calculation
+            val isInvTrig = trimmed.contains("asin", ignoreCase = true) ||
+                    trimmed.contains("acos", ignoreCase = true) ||
+                    trimmed.contains("atan", ignoreCase = true) ||
+                    trimmed.contains("sin⁻¹") ||
+                    trimmed.contains("cos⁻¹") ||
+                    trimmed.contains("tan⁻¹")
+
+            val piFraction = if (isInvTrig) {
+                // If in DEG, convert value (degrees) to radians to get exact pi fraction
+                val radVal = if (angleMode == AngleMode.DEG) (value * PI / 180.0) else value
+                formatPiFraction(radVal)
+            } else if (angleMode == AngleMode.RAD) {
+                formatPiFraction(value)
+            } else {
+                null
+            }
+
             val exactStr = when {
+                piFraction != null -> piFraction
                 fraction != null -> fraction.toProperString()
                 abs(value - Math.round(value)) < 1e-12 -> Math.round(value).toString()
                 else -> ""
@@ -47,6 +68,48 @@ class ExpressionEvaluator(
             MathResult.error("Invalid expression")
         }
     }
+
+    private fun balanceParentheses(expr: String): String {
+        var openCount = 0
+        for (ch in expr) {
+            if (ch == '(') openCount++
+            else if (ch == ')') {
+                if (openCount > 0) openCount--
+            }
+        }
+        return expr + ")".repeat(openCount)
+    }
+
+    private fun formatPiFraction(value: Double): String? {
+        if (abs(value) < 1e-12) return "0"
+        val ratio = value / PI
+        for (d in 1..24) {
+            val prod = ratio * d
+            val rounded = Math.round(prod)
+            if (abs(prod - rounded) < 1e-7) {
+                val k = rounded.toInt()
+                val g = gcd(abs(k), d)
+                val num = k / g
+                val den = d / g
+                return when {
+                    num == 0 -> "0"
+                    den == 1 -> {
+                        when (num) {
+                            1 -> "\\pi"
+                            -1 -> "-\\pi"
+                            else -> "${num}\\pi"
+                        }
+                    }
+                    num == 1 -> "\\frac{\\pi}{$den}"
+                    num == -1 -> "-\\frac{\\pi}{$den}"
+                    else -> "\\frac{${num}\\pi}{$den}"
+                }
+            }
+        }
+        return null
+    }
+
+    private fun gcd(a: Int, b: Int): Int = if (b == 0) a else gcd(b, a % b)
 
     private fun insertImplicitMultiplication(tokens: List<Token>): List<Token> {
         val result = mutableListOf<Token>()

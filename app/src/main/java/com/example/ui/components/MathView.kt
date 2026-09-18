@@ -357,10 +357,12 @@ fun MathResultCard(
                                         fontWeight = FontWeight.Bold
                                     )
                                 }
-                                Text(
-                                    text = step,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                MathView(
+                                    latex = step,
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Normal,
+                                    modifier = Modifier.weight(1f)
                                 )
                             }
                         }
@@ -443,6 +445,12 @@ private fun normalizeLatexForDisplay(input: String): String {
         .replace("\\int", "∫")
         .replace("\\partial", "∂")
         .replace("\\sum", "∑")
+        .replace("\\rightarrow", " → ")
+        .replace("\\longrightarrow", " ⟶ ")
+        .replace("\\rightleftharpoons", " ⇌ ")
+        .replace("\\implies", " ⟹ ")
+        .replace("\\iff", " ⟺ ")
+        .replace("\\circ", "°")
         .replace("\\sqrt{", "√(")
         .replace("\\left(", "(")
         .replace("\\right)", ")")

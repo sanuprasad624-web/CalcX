@@ -464,6 +464,7 @@ private fun MomentOfInertiaToolView(onSaveToNotebook: (String, String, String) -
 
 @Composable
 private fun DimensionToolView() {
+    var searchQuery by remember { mutableStateOf("") }
     var massPower by remember { mutableStateOf(1) }
     var lengthPower by remember { mutableStateOf(1) }
     var timePower by remember { mutableStateOf(-2) }
@@ -472,11 +473,106 @@ private fun DimensionToolView() {
 
     val activeDim = Dimension(massPower, lengthPower, timePower, currentPower, tempPower)
     val matches = DimensionEngine.findMatches(activeDim)
+    val searchResults = remember(searchQuery) {
+        if (searchQuery.isBlank()) emptyList()
+        else DimensionEngine.searchQuantities(searchQuery)
+    }
 
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
-            Text("JEE Dimensional Analysis Checker", fontWeight = FontWeight.Bold)
+            Text("JEE Dimensional Analysis Checker", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             Text("Analyze and identify physical quantities from dimensional formulas [Mᵃ Lᵇ Tᶜ Aᵈ Kᵉ].", style = MaterialTheme.typography.bodySmall)
+        }
+
+        // Search Bar for Unit Dimensions & Quantities
+        item {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("dimension_search_input"),
+                label = { Text("Search quantity, unit, or dimension...") },
+                placeholder = { Text("e.g., Viscosity, N/m², J·s, Force") },
+                leadingIcon = {
+                    Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear search")
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(12.dp)
+            )
+        }
+
+        // Search Results List (if query is active)
+        if (searchQuery.isNotBlank()) {
+            item {
+                Text(
+                    text = "Search Results (${searchResults.size}) — Tap to Load:",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+            if (searchResults.isEmpty()) {
+                item {
+                    Text(
+                        text = "No quantities found matching \"$searchQuery\"",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                items(searchResults.size) { index ->
+                    val q = searchResults[index]
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                massPower = q.dimension.m
+                                lengthPower = q.dimension.l
+                                timePower = q.dimension.t
+                                currentPower = q.dimension.i
+                                tempPower = q.dimension.th
+                                searchQuery = ""
+                            },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(q.name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSecondaryContainer)
+                                Text("SI Unit: ${q.siUnit}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surface
+                            ) {
+                                Text(
+                                    text = q.dimension.toFormattedString(),
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         item {

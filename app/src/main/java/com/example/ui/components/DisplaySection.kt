@@ -40,6 +40,7 @@ fun DisplaySection(
     onToggleAngleMode: () -> Unit,
     onToggleExactMode: () -> Unit,
     onSaveToNotebook: () -> Unit,
+    previousCalculation: String? = null,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -136,6 +137,25 @@ fun DisplaySection(
                 }
             }
 
+            // Closed Previous Calculation Breadcrumb (if user just evaluated)
+            if (!previousCalculation.isNullOrBlank()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = "$previousCalculation =",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
+                        textAlign = TextAlign.End,
+                        maxLines = 1
+                    )
+                }
+            }
+
             // Live Expression Text (Scrollable horizontally)
             Row(
                 modifier = Modifier
@@ -174,16 +194,41 @@ fun DisplaySection(
                     )
                 } else {
                     val activeResult = if (isExactMode && exactResult.isNotEmpty()) exactResult else resultPreview
-                    Text(
-                        text = "= $activeResult",
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 32.sp
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
-                        textAlign = TextAlign.End,
-                        modifier = Modifier.testTag("result_display")
-                    )
+                    val hasLatex = activeResult.contains("\\frac") || activeResult.contains("\\pi") || activeResult.contains("\\sqrt")
+
+                    if (hasLatex) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.testTag("result_display")
+                        ) {
+                            Text(
+                                text = "= ",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 28.sp
+                                ),
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            MathView(
+                                latex = activeResult,
+                                fontSize = 28.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "= $activeResult",
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 32.sp
+                            ),
+                            color = MaterialTheme.colorScheme.primary,
+                            textAlign = TextAlign.End,
+                            modifier = Modifier.testTag("result_display")
+                        )
+                    }
 
                     // Secondary exact/decimal preview if available
                     if (exactResult.isNotEmpty() && exactResult != resultPreview) {
