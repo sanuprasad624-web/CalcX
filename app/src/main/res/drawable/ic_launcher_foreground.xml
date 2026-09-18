@@ -1,0 +1,90 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Calculator Body (Centered within safe-zone: 28 to 80) -->
+    <path
+        android:pathData="M32,24 L76,24 A8,8 0 0,1 84,32 L84,80 A8,8 0 0,1 76,88 L32,88 A8,8 0 0,1 24,80 L24,32 A8,8 0 0,1 32,24 Z"
+        android:strokeWidth="2"
+        android:strokeColor="#38BDF8">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="24"
+                android:startY="24"
+                android:endX="84"
+                android:endY="88"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#1E293B" />
+                <item android:offset="1.0" android:color="#0F172A" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Screen Area -->
+    <path
+        android:pathData="M29,29 L79,29 A3,3 0 0,1 82,32 L82,45 A3,3 0 0,1 79,48 L29,48 A3,3 0 0,1 26,45 L26,32 A3,3 0 0,1 29,29 Z"
+        android:fillColor="#090D16"
+        android:strokeColor="#3338BDF8"
+        android:strokeWidth="1" />
+
+    <!-- Screen Formula: Integral & f(x)dx text styling vector -->
+    <!-- Integral symbol ∫ -->
+    <path
+        android:pathData="M35,34 C36,33 37,33 37.5,34 C38,35 37.5,37 36.5,39 C35.5,41 35,43 35.5,44 C36,44.5 37,44 38,43"
+        android:strokeColor="#38BDF8"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" />
+
+    <!-- Plus / Equal symbol -->
+    <path
+        android:pathData="M64,36 L75,36 M64,40 L75,40"
+        android:strokeColor="#4ADE80"
+        android:strokeWidth="1.8"
+        android:strokeLineCap="round" />
+
+    <!-- Key Rows Grid -->
+    <!-- Row 1 -->
+    <path
+        android:pathData="M30,53 h10 v8 h-10 z"
+        android:fillColor="#334155" />
+    <path
+        android:pathData="M44,53 h10 v8 h-10 z"
+        android:fillColor="#334155" />
+    <path
+        android:pathData="M58,53 h10 v8 h-10 z"
+        android:fillColor="#334155" />
+    <path
+        android:pathData="M72,53 h10 v8 h-10 z"
+        android:fillColor="#F59E0B" />
+
+    <!-- Row 2 -->
+    <path
+        android:pathData="M30,64 h10 v8 h-10 z"
+        android:fillColor="#1E293B" />
+    <path
+        android:pathData="M44,64 h10 v8 h-10 z"
+        android:fillColor="#1E293B" />
+    <path
+        android:pathData="M58,64 h10 v8 h-10 z"
+        android:fillColor="#1E293B" />
+    <path
+        android:pathData="M72,64 h10 v8 h-10 z"
+        android:fillColor="#6366F1" />
+
+    <!-- Row 3 -->
+    <path
+        android:pathData="M30,75 h10 v8 h-10 z"
+        android:fillColor="#1E293B" />
+    <path
+        android:pathData="M44,75 h10 v8 h-10 z"
+        android:fillColor="#1E293B" />
+    <path
+        android:pathData="M58,75 h10 v8 h-10 z"
+        android:fillColor="#38BDF8" />
+    <path
+        android:pathData="M72,75 h10 v8 h-10 z"
+        android:fillColor="#10B981" />
+</vector>

@@ -1,0 +1,6 @@
+{
+  "name": "CALCX",
+  "description": "Ultimate Calculator & Engineering Toolkit for Mathematics, JEE, Physics, Chemistry, Matrices, Equations, Conversions and Offline Computation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
