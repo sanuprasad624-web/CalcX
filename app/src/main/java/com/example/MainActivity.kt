@@ -272,6 +272,10 @@ class MainActivity : ComponentActivity() {
                                         note = "",
                                         category = "Formula"
                                     )
+                                },
+                                onUseInCalculator = { formulaText ->
+                                    viewModel.onKeyInput(formulaText)
+                                    currentScreen = CalcScreenDestination.CALCULATOR
                                 }
                             )
                         }

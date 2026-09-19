@@ -98,63 +98,122 @@ fun GraphCanvas(
         }
     }
 
+    // Keep latest references for pointer gestures
+    val currentViewportState by rememberUpdatedState(viewport)
+    val onViewportChangeState by rememberUpdatedState(onViewportChange)
+
     Box(modifier = modifier.fillMaxSize().background(canvasBg).testTag("graph_canvas_container")) {
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("graph_canvas")
-                // Professional 2D pan and focal-point pinch zoom gesture detector
+                // Professional transition-safe 2D pan and focal-point pinch zoom gesture detector
                 .pointerInput(Unit) {
                     awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var currentVp = viewport
+                        awaitFirstDown(requireUnconsumed = false)
+                        var currentVp = currentViewportState
+                        var lastActivePointerIds = emptySet<androidx.compose.ui.input.pointer.PointerId>()
+                        var previousCentroid: Offset? = null
+                        var previousSpan: Float? = null
+
+                        isInteracting = true
+                        activeTooltip = null
+                        traceCrosshair = null
+                        traceCoords = null
 
                         do {
                             val event = awaitPointerEvent()
                             val canceled = event.changes.any { it.isConsumed }
                             if (canceled) break
 
-                            val pointerCount = event.changes.count { it.pressed }
+                            val pressedChanges = event.changes.filter { it.pressed }
+                            val pointerCount = pressedChanges.size
                             if (pointerCount == 0) break
 
-                            isInteracting = true
-                            activeTooltip = null
-                            traceCrosshair = null
-                            traceCoords = null
-
-                            val pan = event.calculatePan()
-                            val zoom = event.calculateZoom()
-                            val centroid = event.calculateCentroid()
-
+                            val currentPointerIds = pressedChanges.map { it.id }.toSet()
                             val screenWidth = size.width.toFloat()
                             val screenHeight = size.height.toFloat()
 
                             if (screenWidth > 0f && screenHeight > 0f) {
-                                var newVp = currentVp
-
-                                // 1. Apply Pan
-                                if (pan.x != 0f || pan.y != 0f) {
-                                    newVp = newVp.panByPixels(pan.x, pan.y, screenWidth, screenHeight)
+                                // Compute current centroid of all active touches
+                                val currentCentroid = if (pointerCount == 1) {
+                                    pressedChanges[0].position
+                                } else {
+                                    var sumX = 0f
+                                    var sumY = 0f
+                                    for (p in pressedChanges) {
+                                        sumX += p.position.x
+                                        sumY += p.position.y
+                                    }
+                                    Offset(sumX / pointerCount, sumY / pointerCount)
                                 }
 
-                                // 2. Apply Pinch Zoom around centroid
-                                if (zoom != 1f && zoom > 0.01f && zoom < 20f) {
-                                    newVp = newVp.zoomAroundScreenPoint(
-                                        focalScreenX = centroid.x,
-                                        focalScreenY = centroid.y,
-                                        zoomFactor = zoom.toDouble(),
-                                        screenWidth = screenWidth,
-                                        screenHeight = screenHeight
-                                    )
+                                // Compute current span (distance between touches for pinch zoom)
+                                val currentSpan = if (pointerCount >= 2) {
+                                    if (pointerCount == 2) {
+                                        (pressedChanges[0].position - pressedChanges[1].position).getDistance()
+                                    } else {
+                                        var sumDist = 0.0
+                                        for (p in pressedChanges) {
+                                            sumDist += (p.position - currentCentroid).getDistance()
+                                        }
+                                        ((sumDist / pointerCount) * 2.0).toFloat()
+                                    }
+                                } else {
+                                    null
                                 }
 
-                                if (newVp != currentVp) {
-                                    currentVp = newVp
-                                    onViewportChange(newVp)
+                                val pointersChanged = currentPointerIds != lastActivePointerIds
+
+                                if (pointersChanged || previousCentroid == null) {
+                                    // TRANSITION RE-ANCHOR:
+                                    // When a finger touches down or lifts up (e.g. 1 -> 2 fingers or 2 -> 1 finger),
+                                    // NEVER calculate delta on this frame! Re-anchor centroid and span seamlessly.
+                                    previousCentroid = currentCentroid
+                                    previousSpan = currentSpan
+                                    lastActivePointerIds = currentPointerIds
+                                } else {
+                                    // STEADY STATE GESTURE:
+                                    val prevCentroid = previousCentroid!!
+                                    val panDelta = currentCentroid - prevCentroid
+                                    var newVp = currentVp
+
+                                    // 1. Pinch Zoom around actual gesture focal point (currentCentroid)
+                                    val prevSpan = previousSpan
+                                    if (currentSpan != null && prevSpan != null && prevSpan > 8f && currentSpan > 8f) {
+                                        val zoomFactor = (currentSpan / prevSpan).toDouble()
+                                        if (zoomFactor in 0.5..2.0 && abs(zoomFactor - 1.0) > 0.0002) {
+                                            newVp = newVp.zoomAroundScreenPoint(
+                                                focalScreenX = currentCentroid.x,
+                                                focalScreenY = currentCentroid.y,
+                                                zoomFactor = zoomFactor,
+                                                screenWidth = screenWidth,
+                                                screenHeight = screenHeight
+                                            )
+                                        }
+                                    }
+
+                                    // 2. Pan by centroid movement
+                                    if (panDelta.x != 0f || panDelta.y != 0f) {
+                                        newVp = newVp.panByPixels(
+                                            panPixelsX = panDelta.x,
+                                            panPixelsY = panDelta.y,
+                                            screenWidth = screenWidth,
+                                            screenHeight = screenHeight
+                                        )
+                                    }
+
+                                    if (newVp != currentVp) {
+                                        currentVp = newVp
+                                        onViewportChangeState(newVp)
+                                    }
+
+                                    previousCentroid = currentCentroid
+                                    previousSpan = currentSpan
                                 }
                             }
 
-                            // Consume position changes so parent containers don't steal the scroll
+                            // Consume position changes so parent lists/scrollables do not steal touch events
                             event.changes.forEach {
                                 if (it.positionChange() != Offset.Zero) {
                                     it.consume()
