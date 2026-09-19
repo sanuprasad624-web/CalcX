@@ -20,8 +20,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.engine.FormulaItem
 import com.example.engine.FormulaLibrary
+import com.example.ui.components.MathView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,13 +141,14 @@ private fun FormulaCard(
                 shape = MaterialTheme.shapes.small,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text(
-                    text = item.formulaDisplay,
-                    modifier = Modifier.padding(12.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Box(modifier = Modifier.padding(12.dp)) {
+                    MathView(
+                        latex = item.formulaDisplay,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             Text("Variables: ${item.variables.joinToString(", ")}", style = MaterialTheme.typography.bodySmall)

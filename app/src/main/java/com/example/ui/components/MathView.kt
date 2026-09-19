@@ -8,6 +8,7 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,24 +26,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.BaselineShift
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.math.CanonicalMathResult
+import com.example.math.calculus.Expr
+import com.example.math.renderer.*
 
 /**
- * Native Compose Mathematical Expression Renderer.
- * Renders LaTeX-formatted mathematical syntax (fractions, roots, superscripts, subscripts, symbols)
- * directly in Jetpack Compose with pristine layout and guaranteed safe fallback.
+ * Native Compose High-Precision Mathematical Expression View.
+ * Typesets fractions, radicals with dynamic vinculums, powers, subscripts,
+ * scaling delimiters, matrices, calculus operators, and chemical formulas on an exact common baseline.
  */
 @Composable
 fun MathView(
@@ -50,116 +52,165 @@ fun MathView(
     modifier: Modifier = Modifier,
     fontSize: TextUnit = 22.sp,
     color: Color = MaterialTheme.colorScheme.onSurface,
-    fontWeight: FontWeight = FontWeight.SemiBold
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    debug: Boolean = false,
+    scrollable: Boolean = true
 ) {
-    // Normalization & Symbol Mapping
-    val normalized = remember(latex) {
-        normalizeLatexForDisplay(latex)
+    val node = remember(latex) {
+        UniversalMathParser.parse(latex)
     }
+    MathView(
+        node = node,
+        modifier = modifier,
+        fontSize = fontSize,
+        color = color,
+        fontWeight = fontWeight,
+        debug = debug,
+        scrollable = scrollable
+    )
+}
 
-    // Check if expression contains a top-level fraction to render stacked
-    val fractionMatch = remember(latex) {
-        parseTopLevelFraction(latex)
-    }
+/**
+ * Overload for rendering Canonical MathNode AST directly.
+ */
+@Composable
+fun MathView(
+    node: MathNode,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = 22.sp,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    debug: Boolean = false,
+    scrollable: Boolean = true
+) {
+    val textMeasurer = rememberTextMeasurer()
+    val density = LocalDensity.current
 
-    if (fractionMatch != null) {
-        // Render stacked fraction
-        Row(
-            modifier = modifier.horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            if (fractionMatch.prefix.isNotEmpty()) {
-                Text(
-                    text = normalizeLatexForDisplay(fractionMatch.prefix),
-                    fontSize = fontSize,
-                    color = color,
-                    fontWeight = fontWeight
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-            }
-
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                // Numerator
-                Text(
-                    text = normalizeLatexForDisplay(fractionMatch.numerator),
-                    fontSize = (fontSize.value * 0.85f).sp,
-                    color = color,
-                    fontWeight = fontWeight,
-                    textAlign = TextAlign.Center
-                )
-                // Fraction bar
-                HorizontalDivider(
-                    modifier = Modifier
-                        .padding(vertical = 2.dp)
-                        .widthIn(min = 24.dp),
-                    thickness = 1.5.dp,
-                    color = color
-                )
-                // Denominator
-                Text(
-                    text = normalizeLatexForDisplay(fractionMatch.denominator),
-                    fontSize = (fontSize.value * 0.85f).sp,
-                    color = color,
-                    fontWeight = fontWeight,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            if (fractionMatch.suffix.isNotEmpty()) {
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = normalizeLatexForDisplay(fractionMatch.suffix),
-                    fontSize = fontSize,
-                    color = color,
-                    fontWeight = fontWeight
-                )
-            }
-        }
-    } else {
-        // Render formatted text with superscripts/subscripts
-        val annotated = remember(normalized) {
-            buildFormattedMathString(normalized)
-        }
-        Text(
-            text = annotated,
-            modifier = modifier.horizontalScroll(rememberScrollState()),
-            fontSize = fontSize,
-            color = color,
-            fontWeight = fontWeight,
-            fontFamily = FontFamily.Default
+    val layoutBox = remember(node, fontSize.value, textMeasurer) {
+        val engine = MathLayoutEngine(
+            textMeasurer = textMeasurer,
+            baseFontSizeSp = fontSize.value
         )
+        engine.layout(node)
+    }
+
+    val renderer = remember(textMeasurer) {
+        MathCanvasRenderer(textMeasurer = textMeasurer)
+    }
+
+    val accessibleText = remember(node) {
+        node.toAccessibleText()
+    }
+
+    val widthDp: Dp = with(density) { layoutBox.width.toDp() }
+    val heightDp: Dp = with(density) { layoutBox.height.toDp() }
+
+    val scrollState = rememberScrollState()
+    val scrollModifier = if (scrollable) Modifier.horizontalScroll(scrollState) else Modifier
+
+    Box(
+        modifier = modifier
+            .semantics { contentDescription = accessibleText }
+            .then(scrollModifier),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Canvas(
+            modifier = Modifier
+                .width(widthDp)
+                .height(heightDp)
+        ) {
+            renderer.render(
+                drawScope = this,
+                box = layoutBox,
+                originX = 0f,
+                originY = 0f,
+                color = color,
+                debugMode = debug
+            )
+        }
     }
 }
 
 /**
- * Single Canonical Math Result Card.
- * Complies with ZERO DUPLICATE RESULTS mandate.
- * Renders exactly ONE authoritative result with optional steps and action buttons.
+ * Overload for rendering calculus AST (Expr) directly with zero intermediate string conversions.
+ */
+@Composable
+fun MathView(
+    expr: Expr,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = 22.sp,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    debug: Boolean = false
+) {
+    val node = remember(expr) {
+        UniversalMathParser.fromExpr(expr)
+    }
+    MathView(
+        node = node,
+        modifier = modifier,
+        fontSize = fontSize,
+        color = color,
+        fontWeight = fontWeight,
+        debug = debug
+    )
+}
+
+/**
+ * Overload for rendering CanonicalMathResult directly.
+ */
+@Composable
+fun MathView(
+    result: CanonicalMathResult,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = 22.sp,
+    color: Color = MaterialTheme.colorScheme.onSurface,
+    fontWeight: FontWeight = FontWeight.SemiBold,
+    debug: Boolean = false
+) {
+    val node = remember(result) {
+        UniversalMathParser.fromCanonicalResult(result)
+    }
+    MathView(
+        node = node,
+        modifier = modifier,
+        fontSize = fontSize,
+        color = color,
+        fontWeight = fontWeight,
+        debug = debug
+    )
+}
+
+/**
+ * Standardized High-Fidelity Math Result Card.
+ * Renders exact form, decimal approximations, step-by-step breakdowns,
+ * clipboard copy, share, and notebook persistence.
  */
 @Composable
 fun MathResultCard(
     result: CanonicalMathResult,
-    title: String = "Result",
-    onSaveToNotebook: ((title: String, calc: String, res: String) -> Unit)? = null,
+    title: String,
     calculationText: String = "",
-    modifier: Modifier = Modifier
+    onSaveToNotebook: ((title: String, calc: String, res: String) -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    showStepsInitially: Boolean = false
 ) {
     val context = LocalContext.current
-    var showRawLatex by remember { mutableStateOf(false) }
-    var showSteps by remember { mutableStateOf(false) }
+    var isExpanded by remember { mutableStateOf(showStepsInitially) }
+    var showDecimalDetails by remember { mutableStateOf(false) }
 
-    Surface(
+    Card(
         modifier = modifier
             .fillMaxWidth()
             .testTag("math_result_card"),
+        colors = CardDefaults.cardColors(
+            containerColor = if (result.isError)
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f)
+            else
+                MaterialTheme.colorScheme.surfaceVariant
+        ),
         shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-        tonalElevation = 2.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Column(
             modifier = Modifier
@@ -167,362 +218,207 @@ fun MathResultCard(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Header: Title & Actions
+            // Header: Title and Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (result.isError) Icons.Default.Warning else Icons.Default.Functions,
+                        contentDescription = null,
+                        tint = if (result.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (result.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    // LaTeX View Toggle Button
-                    IconButton(
-                        onClick = { showRawLatex = !showRawLatex },
-                        modifier = Modifier.size(32.dp).testTag("toggle_latex_view")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Code,
-                            contentDescription = "Toggle LaTeX source",
-                            tint = if (showRawLatex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-
-                    // Copy Button
+                // Quick Actions: Copy & Share
+                Row {
                     IconButton(
                         onClick = {
-                            val textToCopy = if (showRawLatex) result.latex else result.primaryDisplay
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("CALCX Result", textToCopy))
-                            Toast.makeText(context, "Copied $textToCopy", Toast.LENGTH_SHORT).show()
+                            val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val copyText = if (result.latex.isNotEmpty()) result.latex else result.primaryDisplay
+                            clip.setPrimaryClip(ClipData.newPlainText("CALCX Result", copyText))
+                            Toast.makeText(context, "Copied result to clipboard", Toast.LENGTH_SHORT).show()
                         },
-                        modifier = Modifier.size(32.dp).testTag("copy_math_result")
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.ContentCopy,
-                            contentDescription = "Copy result",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Icons.Default.ContentCopy,
+                            contentDescription = "Copy Result",
                             modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    // Share Button
                     IconButton(
                         onClick = {
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                            val sendIntent = Intent().apply {
+                                action = Intent.ACTION_SEND
+                                putExtra(Intent.EXTRA_TEXT, "$title: ${result.primaryDisplay}")
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, "${result.primaryDisplay}\n(Calculated with CALCX)")
                             }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share Result"))
+                            context.startActivity(Intent.createChooser(sendIntent, "Share Math Result"))
                         },
-                        modifier = Modifier.size(32.dp).testTag("share_math_result")
+                        modifier = Modifier.size(36.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Outlined.Share,
-                            contentDescription = "Share result",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            Icons.Default.Share,
+                            contentDescription = "Share Result",
                             modifier = Modifier.size(18.dp)
                         )
                     }
+                }
+            }
 
-                    // Save to Notebook Button
-                    if (onSaveToNotebook != null) {
-                        IconButton(
-                            onClick = {
-                                onSaveToNotebook(title, calculationText, result.primaryDisplay)
-                                Toast.makeText(context, "Saved to Notebook", Toast.LENGTH_SHORT).show()
-                            },
-                            modifier = Modifier.size(32.dp).testTag("save_math_notebook")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Outlined.BookmarkAdd,
-                                contentDescription = "Save to notebook",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+            // Calculation Context (if available)
+            if (calculationText.isNotEmpty()) {
+                Text(
+                    text = calculationText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            // PRIMARY RESULT DISPLAY
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                    .padding(14.dp)
+            ) {
+                if (result.isError) {
+                    Text(
+                        text = result.errorMessage ?: "Calculation Error",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.error,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                } else {
+                    Column {
+                        // Render exact / primary mathematical form using Universal Math Engine
+                        MathView(
+                            result = result,
+                            fontSize = 24.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Secondary Decimal Form (if different from primary)
+                        val sec = result.secondaryDisplay
+                        if (sec != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = sec,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
                             )
                         }
                     }
                 }
             }
 
-            // PRIMARY RESULT: ONE single canonical rendered mathematical output
-            if (result.isError) {
-                Text(
-                    text = result.errorMessage ?: "Calculation Error",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.error,
-                    fontWeight = FontWeight.Medium
-                )
-            } else {
-                if (showRawLatex) {
-                    // Raw LaTeX source display (only when explicitly requested)
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        modifier = Modifier.fillMaxWidth()
+            // Action Row: Save to Notebook & Toggle Steps
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (onSaveToNotebook != null && !result.isError) {
+                    FilledTonalButton(
+                        onClick = {
+                            val resString = if (result.exactString != null) "${result.exactString} ≈ ${result.decimalString ?: ""}" else result.primaryDisplay
+                            onSaveToNotebook(title, calculationText, resString)
+                            Toast.makeText(context, "Saved to Notebook!", Toast.LENGTH_SHORT).show()
+                        },
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text(
-                            text = result.latex,
-                            modifier = Modifier.padding(10.dp),
-                            style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Save Note", style = MaterialTheme.typography.labelMedium)
                     }
                 } else {
-                    // Clean Rendered Math Output
-                    MathView(
-                        latex = result.latex,
-                        fontSize = 26.sp,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.fillMaxWidth().testTag("primary_math_result")
-                    )
+                    Spacer(modifier = Modifier.width(1.dp))
                 }
 
-                // Secondary Representation (Only shown when explicitly different, e.g. Exact mode showing ≈ decimal)
-                result.secondaryDisplay?.let { sec ->
-                    Text(
-                        text = sec,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.testTag("secondary_math_result")
-                    )
-                }
-            }
-
-            // Steps accordion (if available)
-            if (result.steps.isNotEmpty()) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { showSteps = !showSteps }
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                if (result.steps.isNotEmpty()) {
+                    TextButton(
+                        onClick = { isExpanded = !isExpanded },
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "Derivation Steps (${result.steps.size})",
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
+                            text = if (isExpanded) "Hide Steps" else "Show Steps (${result.steps.size})",
+                            style = MaterialTheme.typography.labelMedium
                         )
                         Icon(
-                            imageVector = if (showSteps) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
                 }
+            }
 
-                AnimatedVisibility(
-                    visible = showSteps,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
+            // Step-by-Step Breakdown Accordion
+            AnimatedVisibility(
+                visible = isExpanded && result.steps.isNotEmpty(),
+                enter = expandVertically(),
+                exit = shrinkVertically()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        result.steps.forEachIndexed { index, step ->
-                            Row(
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Text(
+                        text = "Step-by-Step Solution",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    result.steps.forEachIndexed { index, step ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(4.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                ) {
-                                    Text(
-                                        text = "${index + 1}",
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                                MathView(
-                                    latex = step,
-                                    fontSize = 13.sp,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Normal,
-                                    modifier = Modifier.weight(1f)
+                                Text(
+                                    text = "${index + 1}",
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            MathView(
+                                latex = step,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontWeight = FontWeight.Normal,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-// Data class to parse top-level fraction
-private data class FractionParts(
-    val prefix: String,
-    val numerator: String,
-    val denominator: String,
-    val suffix: String
-)
-
-private fun parseTopLevelFraction(latex: String): FractionParts? {
-    val fracIdx = latex.indexOf("\\frac{")
-    if (fracIdx == -1) return null
-
-    val prefix = latex.substring(0, fracIdx).trim()
-    var idx = fracIdx + 6
-    var depth = 1
-    val numStart = idx
-    while (idx < latex.length && depth > 0) {
-        if (latex[idx] == '{') depth++
-        else if (latex[idx] == '}') depth--
-        idx++
-    }
-    if (depth != 0) return null
-    val numerator = latex.substring(numStart, idx - 1)
-
-    // Denominator
-    if (idx >= latex.length || latex[idx] != '{') return null
-    idx++
-    val denStart = idx
-    depth = 1
-    while (idx < latex.length && depth > 0) {
-        if (latex[idx] == '{') depth++
-        else if (latex[idx] == '}') depth--
-        idx++
-    }
-    if (depth != 0) return null
-    val denominator = latex.substring(denStart, idx - 1)
-    val suffix = latex.substring(idx).trim()
-
-    return FractionParts(prefix, numerator, denominator, suffix)
-}
-
-/**
- * Normalizes LaTeX tags into clean mathematical Unicode representations
- */
-private fun normalizeLatexForDisplay(input: String): String {
-    var s = input
-        .replace("\\cdot", "·")
-        .replace("\\times", "×")
-        .replace("\\div", "÷")
-        .replace("\\pm", "±")
-        .replace("\\mp", "∓")
-        .replace("\\leq", "≤")
-        .replace("\\le", "≤")
-        .replace("\\geq", "≥")
-        .replace("\\ge", "≥")
-        .replace("\\neq", "≠")
-        .replace("\\ne", "≠")
-        .replace("\\approx", "≈")
-        .replace("\\infty", "∞")
-        .replace("\\pi", "π")
-        .replace("\\theta", "θ")
-        .replace("\\alpha", "α")
-        .replace("\\beta", "β")
-        .replace("\\gamma", "γ")
-        .replace("\\lambda", "λ")
-        .replace("\\mu", "μ")
-        .replace("\\sigma", "σ")
-        .replace("\\omega", "ω")
-        .replace("\\Delta", "Δ")
-        .replace("\\int", "∫")
-        .replace("\\partial", "∂")
-        .replace("\\sum", "∑")
-        .replace("\\rightarrow", " → ")
-        .replace("\\longrightarrow", " ⟶ ")
-        .replace("\\rightleftharpoons", " ⇌ ")
-        .replace("\\implies", " ⟹ ")
-        .replace("\\iff", " ⟺ ")
-        .replace("\\circ", "°")
-        .replace("\\sqrt{", "√(")
-        .replace("\\left(", "(")
-        .replace("\\right)", ")")
-        .replace("\\left[", "[")
-        .replace("\\right]", "]")
-        .replace("\\left|", "|")
-        .replace("\\right|", "|")
-        .replace("\\,", " ")
-        .replace("\\ ", " ")
-
-    // Clean up \text{...}
-    val textRegex = Regex("\\\\text\\{([^}]*)\\}")
-    s = textRegex.replace(s) { it.groupValues[1] }
-
-    // Clean remaining unclosed braces from replaced \sqrt{
-    return s
-}
-
-/**
- * Builds an AnnotatedString with superscripts and subscripts properly styled
- */
-private fun buildFormattedMathString(text: String): androidx.compose.ui.text.AnnotatedString {
-    return buildAnnotatedString {
-        var i = 0
-        while (i < text.length) {
-            val ch = text[i]
-            if (ch == '^' && i + 1 < text.length) {
-                i++
-                if (text[i] == '{') {
-                    i++
-                    val start = i
-                    while (i < text.length && text[i] != '}') i++
-                    val superText = text.substring(start, i)
-                    withStyle(SpanStyle(baselineShift = BaselineShift.Superscript, fontSize = 14.sp)) {
-                        append(superText)
-                    }
-                    if (i < text.length && text[i] == '}') i++
-                } else if (text[i] == '(') {
-                    i++
-                    val start = i
-                    while (i < text.length && text[i] != ')') i++
-                    val superText = text.substring(start, i)
-                    withStyle(SpanStyle(baselineShift = BaselineShift.Superscript, fontSize = 14.sp)) {
-                        append(superText)
-                    }
-                    if (i < text.length && text[i] == ')') i++
-                } else {
-                    withStyle(SpanStyle(baselineShift = BaselineShift.Superscript, fontSize = 14.sp)) {
-                        append(text[i].toString())
-                    }
-                    i++
-                }
-            } else if (ch == '_' && i + 1 < text.length) {
-                i++
-                if (text[i] == '{') {
-                    i++
-                    val start = i
-                    while (i < text.length && text[i] != '}') i++
-                    val subText = text.substring(start, i)
-                    withStyle(SpanStyle(baselineShift = BaselineShift.Subscript, fontSize = 14.sp)) {
-                        append(subText)
-                    }
-                    if (i < text.length && text[i] == '}') i++
-                } else {
-                    withStyle(SpanStyle(baselineShift = BaselineShift.Subscript, fontSize = 14.sp)) {
-                        append(text[i].toString())
-                    }
-                    i++
-                }
-            } else {
-                append(ch)
-                i++
             }
         }
     }

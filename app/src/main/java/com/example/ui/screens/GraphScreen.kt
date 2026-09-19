@@ -86,6 +86,7 @@ fun GraphScreen(
     var showGrid by remember { mutableStateOf(true) }
     var showAxes by remember { mutableStateOf(true) }
     var showTableDialog by remember { mutableStateOf(false) }
+    var angleMode by remember { mutableStateOf("RAD") }
 
     // Sliders / Parameters (e.g. a, b)
     var sliders by remember {
@@ -447,6 +448,10 @@ fun GraphScreen(
                         }
                     },
                     onHideKeyboard = { isKeyboardVisible = false },
+                    angleMode = angleMode,
+                    onToggleAngleMode = {
+                        angleMode = if (angleMode == "RAD") "DEG" else "RAD"
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -505,6 +510,26 @@ fun GraphScreen(
                 ) {
                     Text("Coordinate Axes")
                     Switch(checked = showAxes, onCheckedChange = { showAxes = it })
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Angles")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = angleMode == "RAD",
+                            onClick = { angleMode = "RAD" },
+                            label = { Text("Radians") }
+                        )
+                        FilterChip(
+                            selected = angleMode == "DEG",
+                            onClick = { angleMode = "DEG" },
+                            label = { Text("Degrees") }
+                        )
+                    }
                 }
 
                 HorizontalDivider()

@@ -39,6 +39,8 @@ fun DesmosKeyboard(
     onUndo: () -> Unit,
     onRedo: () -> Unit,
     onHideKeyboard: () -> Unit,
+    angleMode: String = "RAD",
+    onToggleAngleMode: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     var mode by remember { mutableStateOf(KeyboardMode.MATH) }
@@ -60,7 +62,7 @@ fun DesmosKeyboard(
             .border(width = 0.5.dp, color = Color(0xFFCBD5E1))
             .testTag("desmos_custom_keyboard")
     ) {
-        // --- TOP TOOLBAR (Add +, Undo ↶, Redo ↷, Settings, Hide ⌄) ---
+        // --- TOP TOOLBAR (Add +, Undo ↶, Redo ↷, DEG/RAD, Settings, Hide ⌄) ---
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -68,7 +70,7 @@ fun DesmosKeyboard(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = onAddExpression,
                     modifier = Modifier.size(34.dp).testTag("kb_add_btn")
@@ -90,6 +92,28 @@ fun DesmosKeyboard(
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (onToggleAngleMode != null) {
+                    Surface(
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onToggleAngleMode() },
+                        color = Color(0xFFE2E8F0)
+                    ) {
+                        Box(
+                            modifier = Modifier.padding(horizontal = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = angleMode,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = textColor
+                            )
+                        }
+                    }
+                }
+
                 IconButton(
                     onClick = { showFuncsSheet = true },
                     modifier = Modifier.size(34.dp).testTag("kb_settings_btn")

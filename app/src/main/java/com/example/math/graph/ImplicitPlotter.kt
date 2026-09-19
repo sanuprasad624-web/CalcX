@@ -23,9 +23,10 @@ object ImplicitPlotter {
         viewport: GraphViewport,
         width: Float,
         height: Float,
-        gridSize: Int = 90
+        isInteractive: Boolean = false
     ): List<LineSegment> {
         val segments = mutableListOf<LineSegment>()
+        val gridSize = if (isInteractive) 45 else 85
         val nx = gridSize
         val ny = gridSize
 

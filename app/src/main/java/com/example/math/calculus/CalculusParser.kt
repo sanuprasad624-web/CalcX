@@ -77,7 +77,7 @@ class CalculusParser(private val input: String) {
         if (pos >= text.length) return false
         val ch = text[pos]
         // If next is digit or decimal point, not implicit multiplication unless following a closed paren or variable
-        return ch == '(' || ch.isLetter() || ch == 'π' || ch == 'θ'
+        return ch == '(' || ch == '|' || ch.isLetter() || ch == 'π' || ch == 'θ'
     }
 
     private fun parsePower(): Expr {
@@ -121,6 +121,17 @@ class CalculusParser(private val input: String) {
                 pos++
             }
             return expr
+        }
+
+        // Absolute value |expr|
+        if (ch == '|') {
+            pos++
+            val expr = parseAddSub()
+            skipWhitespace()
+            if (pos < text.length && text[pos] == '|') {
+                pos++
+            }
+            return Func("abs", expr)
         }
 
         // Numbers
