@@ -51,9 +51,9 @@ fun GraphCanvas(
 ) {
     // Desmos styling colors
     val canvasBg = Color(0xFFFFFFFF)
-    val majorGridColor = Color(0xFFD0D7DE)
-    val minorGridColor = Color(0xFFEDF0F3)
-    val axisColor = Color(0xFF1E293B)
+    val majorGridColor = Color(0xFFE2E8F0)
+    val minorGridColor = Color(0xFFF1F5F9)
+    val axisColor = Color(0xFF334155)
 
     // Interaction state: switches to INTERACTIVE mode during gestures (lower sampling density for 60fps),
     // and settles to PRECISION mode (fine refinement) 150ms after gesture release.
@@ -310,22 +310,22 @@ fun GraphCanvas(
                 val originY = viewport.toScreenY(0.0, height)
 
                 // Y-axis (x = 0)
-                if (originX in -10f..width + 10f) {
+                if (originX in -2f..width + 2f) {
                     drawLine(
                         color = axisColor,
                         start = Offset(originX, 0f),
                         end = Offset(originX, height),
-                        strokeWidth = 1.8.dp.toPx()
+                        strokeWidth = 1.4.dp.toPx()
                     )
                 }
 
                 // X-axis (y = 0)
-                if (originY in -10f..height + 10f) {
+                if (originY in -2f..height + 2f) {
                     drawLine(
                         color = axisColor,
                         start = Offset(0f, originY),
                         end = Offset(width, originY),
-                        strokeWidth = 1.8.dp.toPx()
+                        strokeWidth = 1.4.dp.toPx()
                     )
                 }
             }
@@ -478,7 +478,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
     textPaint: Paint
 ) {
     val majorStep = calculateNiceStep(viewport.rangeX)
-    val minorStep = majorStep / 5.0 // 5 square boxes per major step
+    val minorStep = (majorStep / 5.0).coerceAtLeast(1e-6)
 
     val originX = viewport.toScreenX(0.0, width)
     val originY = viewport.toScreenY(0.0, height)
@@ -486,64 +486,72 @@ private fun DrawScope.drawDesmosGridAndLabels(
     // 1. Draw Minor Vertical Grid Lines (X)
     val startMinorX = floor(viewport.minX / minorStep) * minorStep
     var curMinorX = startMinorX
-    while (curMinorX <= viewport.maxX + minorStep * 0.5) {
+    var minorXCount = 0
+    while (curMinorX <= viewport.maxX + minorStep * 0.5 && minorXCount < 150) {
         val sx = viewport.toScreenX(curMinorX, width)
-        if (sx in 0f..width) {
+        if (sx in 0f..width && abs(sx - originX) > 1.5f) {
             drawLine(
                 color = minorColor,
                 start = Offset(sx, 0f),
                 end = Offset(sx, height),
-                strokeWidth = 0.8.dp.toPx()
+                strokeWidth = 0.5.dp.toPx()
             )
         }
         curMinorX += minorStep
+        minorXCount++
     }
 
     // 2. Draw Minor Horizontal Grid Lines (Y)
     val startMinorY = floor(viewport.minY / minorStep) * minorStep
     var curMinorY = startMinorY
-    while (curMinorY <= viewport.maxY + minorStep * 0.5) {
+    var minorYCount = 0
+    while (curMinorY <= viewport.maxY + minorStep * 0.5 && minorYCount < 150) {
         val sy = viewport.toScreenY(curMinorY, height)
-        if (sy in 0f..height) {
+        if (sy in 0f..height && abs(sy - originY) > 1.5f) {
             drawLine(
                 color = minorColor,
                 start = Offset(0f, sy),
                 end = Offset(width, sy),
-                strokeWidth = 0.8.dp.toPx()
+                strokeWidth = 0.5.dp.toPx()
             )
         }
         curMinorY += minorStep
+        minorYCount++
     }
 
     // 3. Draw Major Grid Lines
     val startMajorX = floor(viewport.minX / majorStep) * majorStep
     var curMajorX = startMajorX
-    while (curMajorX <= viewport.maxX + majorStep * 0.5) {
+    var majorXCount = 0
+    while (curMajorX <= viewport.maxX + majorStep * 0.5 && majorXCount < 50) {
         val sx = viewport.toScreenX(curMajorX, width)
-        if (sx in 0f..width) {
+        if (sx in 0f..width && abs(sx - originX) > 1.5f) {
             drawLine(
                 color = majorColor,
                 start = Offset(sx, 0f),
                 end = Offset(sx, height),
-                strokeWidth = 1.3.dp.toPx()
+                strokeWidth = 0.9.dp.toPx()
             )
         }
         curMajorX += majorStep
+        majorXCount++
     }
 
     val startMajorY = floor(viewport.minY / majorStep) * majorStep
     var curMajorY = startMajorY
-    while (curMajorY <= viewport.maxY + majorStep * 0.5) {
+    var majorYCount = 0
+    while (curMajorY <= viewport.maxY + majorStep * 0.5 && majorYCount < 50) {
         val sy = viewport.toScreenY(curMajorY, height)
-        if (sy in 0f..height) {
+        if (sy in 0f..height && abs(sy - originY) > 1.5f) {
             drawLine(
                 color = majorColor,
                 start = Offset(0f, sy),
                 end = Offset(width, sy),
-                strokeWidth = 1.3.dp.toPx()
+                strokeWidth = 0.9.dp.toPx()
             )
         }
         curMajorY += majorStep
+        majorYCount++
     }
 
     // 4. DRAW NUMBERS ON AXES (Dynamic with zoom)
@@ -562,7 +570,8 @@ private fun DrawScope.drawDesmosGridAndLabels(
     // Draw X-axis numbers
     textPaint.textAlign = Paint.Align.CENTER
     curMajorX = startMajorX
-    while (curMajorX <= viewport.maxX + majorStep * 0.5) {
+    var numXCount = 0
+    while (curMajorX <= viewport.maxX + majorStep * 0.5 && numXCount < 50) {
         if (abs(curMajorX) > 1e-9) {
             val sx = viewport.toScreenX(curMajorX, width)
             if (sx in 10f..(width - 10f)) {
@@ -571,12 +580,14 @@ private fun DrawScope.drawDesmosGridAndLabels(
             }
         }
         curMajorX += majorStep
+        numXCount++
     }
 
     // Draw Y-axis numbers
     textPaint.textAlign = Paint.Align.RIGHT
     curMajorY = startMajorY
-    while (curMajorY <= viewport.maxY + majorStep * 0.5) {
+    var numYCount = 0
+    while (curMajorY <= viewport.maxY + majorStep * 0.5 && numYCount < 50) {
         if (abs(curMajorY) > 1e-9) {
             val sy = viewport.toScreenY(curMajorY, height)
             if (sy in 15f..(height - 15f)) {
@@ -585,6 +596,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
             }
         }
         curMajorY += majorStep
+        numYCount++
     }
 
     // Draw origin "0"
@@ -599,7 +611,8 @@ private fun DrawScope.drawDesmosGridAndLabels(
  * Dynamically scales with "nice numbers": 1, 2, 5 * 10^k.
  */
 private fun calculateNiceStep(range: Double): Double {
-    val roughStep = range / 5.5
+    val safeRange = if (range.isNaN() || range.isInfinite() || range <= 0.0) 20.0 else range
+    val roughStep = (safeRange / 5.5).coerceIn(1e-6, 1e8)
     val exponent = floor(log10(roughStep))
     val fraction = roughStep / 10.0.pow(exponent)
     val niceFraction = when {
@@ -608,7 +621,7 @@ private fun calculateNiceStep(range: Double): Double {
         fraction < 7.5 -> 5.0
         else -> 10.0
     }
-    return niceFraction * 10.0.pow(exponent)
+    return (niceFraction * 10.0.pow(exponent)).coerceIn(1e-6, 1e8)
 }
 
 /**

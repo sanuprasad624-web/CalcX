@@ -31,9 +31,11 @@ enum class KeyboardMode {
 @Composable
 fun DesmosKeyboard(
     onInsertText: (String) -> Unit,
+    onInsertFunction: (String) -> Unit = onInsertText,
     onBackspace: () -> Unit,
     onMoveCursorLeft: () -> Unit,
     onMoveCursorRight: () -> Unit,
+    onNextSlot: (() -> Unit)? = null,
     onEnter: () -> Unit,
     onAddExpression: () -> Unit,
     onUndo: () -> Unit,
@@ -143,12 +145,12 @@ fun DesmosKeyboard(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     MathKey(label = "x", isItalic = true, bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("x") }
                     MathKey(label = "y", isItalic = true, bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("y") }
-                    MathKey(label = "a²", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("^2") }
-                    MathKey(label = "aᵇ", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("^") }
+                    MathKey(label = "a²", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("power2") }
+                    MathKey(label = "aᵇ", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("power") }
                     MathKey(label = "7", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("7") }
                     MathKey(label = "8", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("8") }
                     MathKey(label = "9", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("9") }
-                    MathKey(label = "÷", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("/") }
+                    MathKey(label = "÷", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("/") }
                     MathKey(label = "funcs", bg = actionKeyBg, fontSize = 11.sp, modifier = Modifier.weight(1.3f)) { showFuncsSheet = true }
                 }
 
@@ -168,10 +170,10 @@ fun DesmosKeyboard(
 
                 // ROW 3: |a| | , | ≤ | ≥ | 1 | 2 | 3 | − | ⌫
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MathKey(label = "|a|", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("abs(") }
+                    MathKey(label = "|a|", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("abs") }
                     MathKey(label = ",", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText(",") }
-                    MathKey(label = "≤", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("<=") }
-                    MathKey(label = "≥", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText(">=") }
+                    MathKey(label = "≤", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("<=") }
+                    MathKey(label = "≥", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction(">=") }
                     MathKey(label = "1", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("1") }
                     MathKey(label = "2", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("2") }
                     MathKey(label = "3", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("3") }
@@ -179,12 +181,12 @@ fun DesmosKeyboard(
                     MathIconKey(icon = Icons.AutoMirrored.Filled.Backspace, bg = actionKeyBg, modifier = Modifier.weight(1.3f)) { onBackspace() }
                 }
 
-                // ROW 4: ABC | 🔊 | √ | π | 0 | . | = | + | ↵
+                // ROW 4: ABC | ⇥ | √ | π | 0 | . | = | + | ↵
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                     MathKey(label = "ABC", bg = actionKeyBg, fontSize = 12.sp, modifier = Modifier.weight(1.1f)) { mode = KeyboardMode.ABC }
-                    MathIconKey(icon = Icons.Default.VolumeUp, bg = actionKeyBg, modifier = Modifier.weight(0.9f)) { /* audio trace */ }
-                    MathKey(label = "√", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("sqrt(") }
-                    MathKey(label = "π", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("pi") }
+                    MathKey(label = "Tab", bg = actionKeyBg, fontSize = 11.sp, modifier = Modifier.weight(0.9f)) { onNextSlot?.invoke() ?: onMoveCursorRight() }
+                    MathKey(label = "√", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("sqrt") }
+                    MathKey(label = "π", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertFunction("pi") }
                     MathKey(label = "0", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText("0") }
                     MathKey(label = ".", bg = numberKeyBg, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f)) { onInsertText(".") }
                     MathKey(label = "=", bg = standardKeyBg, modifier = Modifier.weight(1f)) { onInsertText("=") }
@@ -192,8 +194,7 @@ fun DesmosKeyboard(
                     MathIconKey(icon = Icons.Default.KeyboardReturn, bg = primaryEnterBg, tint = Color.White, modifier = Modifier.weight(1.3f)) { onEnter() }
                 }
             } else {
-                // ABC MODE (Matches Screenshot 2)
-                // ROW 1: q w e r t y u i o p
+                // ABC MODE
                 val row1 = listOf("q", "w", "e", "r", "t", "y", "u", "i", "o", "p")
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     row1.forEach { ch ->
@@ -204,18 +205,16 @@ fun DesmosKeyboard(
                     }
                 }
 
-                // ROW 2: a s d f g h j k l θ
                 val row2 = listOf("a", "s", "d", "f", "g", "h", "j", "k", "l", "θ")
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     row2.forEach { ch ->
                         val letter = if (isShifted && ch != "θ") ch.uppercase() else ch
                         MathKey(label = letter, isItalic = true, bg = standardKeyBg, modifier = Modifier.weight(1f)) {
-                            onInsertText(letter)
+                            if (ch == "θ") onInsertFunction("theta") else onInsertText(letter)
                         }
                     }
                 }
 
-                // ROW 3: ⇧ | z x c v b n m | ⌫
                 val row3 = listOf("z", "x", "c", "v", "b", "n", "m")
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     MathIconKey(
@@ -235,10 +234,9 @@ fun DesmosKeyboard(
                     MathIconKey(icon = Icons.AutoMirrored.Filled.Backspace, bg = actionKeyBg, modifier = Modifier.weight(1.3f)) { onBackspace() }
                 }
 
-                // ROW 4: 1 2 3 | a_b | ! % | [ ] | { } | ~ : | ' | ↵
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     MathKey(label = "1 2 3", bg = actionKeyBg, fontSize = 12.sp, modifier = Modifier.weight(1.3f)) { mode = KeyboardMode.MATH }
-                    MathKey(label = "a_b", bg = standardKeyBg, fontSize = 12.sp, modifier = Modifier.weight(1f)) { onInsertText("_") }
+                    MathKey(label = "a_b", bg = standardKeyBg, fontSize = 12.sp, modifier = Modifier.weight(1f)) { onInsertFunction("_") }
                     MathKey(label = "! %", bg = standardKeyBg, fontSize = 11.sp, modifier = Modifier.weight(1f)) { onInsertText("!") }
                     MathKey(label = "[ ]", bg = standardKeyBg, fontSize = 11.sp, modifier = Modifier.weight(1f)) { onInsertText("[]") }
                     MathKey(label = "{ }", bg = standardKeyBg, fontSize = 11.sp, modifier = Modifier.weight(1f)) { onInsertText("{}") }
@@ -261,40 +259,75 @@ fun DesmosKeyboard(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text("Trigonometry", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("sin", "cos", "tan", "csc", "sec", "cot").forEach { fn ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(
+                            "sin" to "sin",
+                            "cos" to "cos",
+                            "tan" to "tan",
+                            "cot" to "cot",
+                            "sec" to "sec",
+                            "csc" to "csc",
+                            "cosec" to "cosec"
+                        ).forEach { (label, fnName) ->
                             OutlinedButton(
-                                onClick = { onInsertText("$fn("); showFuncsSheet = false },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(36.dp)
+                                onClick = { onInsertFunction(fnName); showFuncsSheet = false },
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                modifier = Modifier.weight(1f).height(34.dp)
                             ) {
-                                Text(fn, fontSize = 11.sp)
+                                Text(label, fontSize = 10.sp)
                             }
                         }
                     }
 
-                    Text("Inverse & Hyperbolic", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("arcsin", "arccos", "arctan", "sinh", "cosh", "tanh").forEach { fn ->
+                    Text("Inverse Trigonometry (sin⁻¹ notation)", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(
+                            "sin⁻¹" to "sin^-1",
+                            "cos⁻¹" to "cos^-1",
+                            "tan⁻¹" to "tan^-1",
+                            "cot⁻¹" to "cot^-1",
+                            "sec⁻¹" to "sec^-1",
+                            "csc⁻¹" to "csc^-1"
+                        ).forEach { (label, fnName) ->
                             OutlinedButton(
-                                onClick = { onInsertText("$fn("); showFuncsSheet = false },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(36.dp)
+                                onClick = { onInsertFunction(fnName); showFuncsSheet = false },
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                modifier = Modifier.weight(1f).height(34.dp)
+                            ) {
+                                Text(label, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+
+                    Text("Hyperbolic Functions", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf("sinh", "cosh", "tanh", "coth", "sech", "csch").forEach { fn ->
+                            OutlinedButton(
+                                onClick = { onInsertFunction(fn); showFuncsSheet = false },
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                modifier = Modifier.weight(1f).height(34.dp)
                             ) {
                                 Text(fn, fontSize = 10.sp)
                             }
                         }
                     }
 
-                    Text("Logarithms & Calculus", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("ln", "log", "exp", "sqrt", "abs").forEach { fn ->
+                    Text("Logarithms, Roots & Calculus", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        listOf(
+                            "ln" to "ln",
+                            "log" to "log",
+                            "exp" to "exp",
+                            "√" to "sqrt",
+                            "ⁿ√" to "nthroot",
+                            "|a|" to "abs"
+                        ).forEach { (label, fnName) ->
                             OutlinedButton(
-                                onClick = { onInsertText("$fn("); showFuncsSheet = false },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                modifier = Modifier.weight(1f).height(36.dp)
+                                onClick = { onInsertFunction(fnName); showFuncsSheet = false },
+                                contentPadding = PaddingValues(horizontal = 2.dp, vertical = 2.dp),
+                                modifier = Modifier.weight(1f).height(34.dp)
                             ) {
-                                Text(fn, fontSize = 11.sp)
+                                Text(label, fontSize = 10.sp)
                             }
                         }
                     }
@@ -303,7 +336,7 @@ fun DesmosKeyboard(
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         listOf("round", "floor", "ceil", "sign").forEach { fn ->
                             OutlinedButton(
-                                onClick = { onInsertText("$fn("); showFuncsSheet = false },
+                                onClick = { onInsertFunction(fn); showFuncsSheet = false },
                                 contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                                 modifier = Modifier.weight(1f).height(36.dp)
                             ) {

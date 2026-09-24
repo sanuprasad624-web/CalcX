@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.example.math.graph.GraphFunction
 import com.example.math.graph.GraphSlider
 import com.example.math.graph.GraphViewport
+import com.example.ui.components.MathQuillController
 import com.example.ui.components.graph.DesmosExpressionRow
 import com.example.ui.components.graph.DesmosKeyboard
 import com.example.ui.components.graph.GraphCanvas
@@ -51,25 +52,30 @@ fun GraphScreen(
     // Color counter so every new function graph must show by another color
     var colorCounter by remember { mutableIntStateOf(1) }
 
-    // Functions list: row 1 initialized to "x^2 + y^2 = 5" with Desmos Red (matching Screenshot 3!)
+    // Functions list: row 1 initialized to "x^2 + y^2 = 5" with Desmos Red
     var functions by remember {
         mutableStateOf(
             listOf(
-                GraphFunction.create("f1", initialExpression, 0)
+                GraphFunction.createFromLatex("f1", initialExpression, 0)
             )
         )
     }
 
-    // Active focused row and cursor position
+    // Active focused row index
     var focusedRowIndex by remember { mutableIntStateOf(0) }
-    var cursorPos by remember { mutableIntStateOf(initialExpression.length) }
+
+    // Map of MathQuillControllers for each expression row
+    val controllers = remember { mutableStateMapOf<String, MathQuillController>() }
+
+    fun getOrCreateController(id: String): MathQuillController {
+        return controllers.getOrPut(id) { MathQuillController() }
+    }
 
     // Undo / Redo history
     val history = remember { mutableStateListOf<List<GraphFunction>>(functions) }
     var historyIndex by remember { mutableIntStateOf(0) }
 
     fun recordHistory(newFuncs: List<GraphFunction>) {
-        // Truncate redo stack
         while (history.size > historyIndex + 1) {
             history.removeAt(history.size - 1)
         }
@@ -108,78 +114,48 @@ fun GraphScreen(
         val nextColorIndex = colorCounter
         colorCounter++
         val newId = "f_${System.currentTimeMillis()}"
-        val newFunc = GraphFunction.create(newId, "", nextColorIndex)
+        val newFunc = GraphFunction.createFromLatex(newId, "", nextColorIndex)
         val newFuncs = functions + newFunc
         recordHistory(newFuncs)
         focusedRowIndex = newFuncs.size - 1
-        cursorPos = 0
         isKeyboardVisible = true
+        getOrCreateController(newId).focus()
     }
 
-    // Keyboard Actions
+    // Active focused controller helper
+    fun getActiveController(): MathQuillController? {
+        if (functions.isEmpty()) return null
+        val safeIdx = focusedRowIndex.coerceIn(0, functions.size - 1)
+        return getOrCreateController(functions[safeIdx].id)
+    }
+
+    // Keyboard Actions routed to MathQuill API
     val handleInsertText: (String) -> Unit = { insertText ->
         if (functions.isEmpty()) {
             addNewExpression()
         }
-        val safeIndex = focusedRowIndex.coerceIn(0, functions.size - 1)
-        val activeFunc = functions[safeIndex]
-        val oldText = activeFunc.expressionText
-        val safeCursor = cursorPos.coerceIn(0, oldText.length)
+        getActiveController()?.insertTypedText(insertText)
+    }
 
-        val newText = StringBuilder(oldText).insert(safeCursor, insertText).toString()
-        val updatedFunc = GraphFunction.create(activeFunc.id, newText, activeFunc.colorIndexOrDefault())
-            .copy(
-                isVisible = activeFunc.isVisible,
-                showDerivative = activeFunc.showDerivative,
-                showTangent = activeFunc.showTangent,
-                showIntegralArea = activeFunc.showIntegralArea
-            )
-
-        val updatedList = functions.toMutableList()
-        updatedList[safeIndex] = updatedFunc
-        recordHistory(updatedList)
-        cursorPos = safeCursor + insertText.length
+    val handleInsertFunction: (String) -> Unit = { fnName ->
+        if (functions.isEmpty()) {
+            addNewExpression()
+        }
+        getActiveController()?.insertFunction(fnName)
     }
 
     val handleBackspace: () -> Unit = {
         if (functions.isNotEmpty()) {
             val safeIndex = focusedRowIndex.coerceIn(0, functions.size - 1)
             val activeFunc = functions[safeIndex]
-            val oldText = activeFunc.expressionText
-            val safeCursor = cursorPos.coerceIn(0, oldText.length)
-
-            if (safeCursor > 0) {
-                // Check if backspacing multi-character token like "sqrt(" or "abs("
-                val removeCount = when {
-                    oldText.substring(0, safeCursor).endsWith("sqrt(") -> 5
-                    oldText.substring(0, safeCursor).endsWith("abs(") -> 4
-                    oldText.substring(0, safeCursor).endsWith("sin(") -> 4
-                    oldText.substring(0, safeCursor).endsWith("cos(") -> 4
-                    oldText.substring(0, safeCursor).endsWith("tan(") -> 4
-                    oldText.substring(0, safeCursor).endsWith("ln(") -> 3
-                    oldText.substring(0, safeCursor).endsWith("pi") -> 2
-                    oldText.substring(0, safeCursor).endsWith("^2") -> 2
-                    else -> 1
-                }
-                val newText = StringBuilder(oldText).delete(safeCursor - removeCount, safeCursor).toString()
-                val updatedFunc = GraphFunction.create(activeFunc.id, newText, activeFunc.colorIndexOrDefault())
-                    .copy(
-                        isVisible = activeFunc.isVisible,
-                        showDerivative = activeFunc.showDerivative,
-                        showTangent = activeFunc.showTangent,
-                        showIntegralArea = activeFunc.showIntegralArea
-                    )
-                val updatedList = functions.toMutableList()
-                updatedList[safeIndex] = updatedFunc
-                recordHistory(updatedList)
-                cursorPos = safeCursor - removeCount
-            } else if (oldText.isEmpty() && functions.size > 1) {
-                // If empty row, delete row and focus previous
+            if (activeFunc.expressionText.isEmpty() && functions.size > 1) {
                 val updatedList = functions.toMutableList()
                 updatedList.removeAt(safeIndex)
                 recordHistory(updatedList)
                 focusedRowIndex = (safeIndex - 1).coerceAtLeast(0)
-                cursorPos = functions[focusedRowIndex].expressionText.length
+                getOrCreateController(functions[focusedRowIndex].id).focus()
+            } else {
+                getActiveController()?.handleBackspace()
             }
         }
     }
@@ -192,29 +168,35 @@ fun GraphScreen(
                         Icon(
                             Icons.Default.Folder,
                             contentDescription = "Graph",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color(0xFF60A5FA),
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             "Untitled Graph",
                             fontWeight = FontWeight.Bold,
-                            style = MaterialTheme.typography.titleMedium
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Color.White
                         )
                     }
                 },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag("graph_back_button")) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
                     }
                 },
                 actions = {
                     // Save Button
-                    FilledTonalButton(
+                    Button(
                         onClick = {
                             Toast.makeText(context, "Graph saved successfully", Toast.LENGTH_SHORT).show()
                         },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF2563EB),
+                            contentColor = Color.White
+                        ),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.height(34.dp).testTag("graph_save_btn")
                     ) {
                         Text("Save", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
@@ -225,7 +207,7 @@ fun GraphScreen(
                         onClick = { viewport = viewport.reset() },
                         modifier = Modifier.testTag("graph_reset_view_btn")
                     ) {
-                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Reset View")
+                        Icon(Icons.Default.CenterFocusStrong, contentDescription = "Reset View", tint = Color(0xFFE2E8F0))
                     }
 
                     // Table of Values
@@ -233,7 +215,7 @@ fun GraphScreen(
                         onClick = { showTableDialog = true },
                         modifier = Modifier.testTag("graph_table_btn")
                     ) {
-                        Icon(Icons.Default.TableChart, contentDescription = "Table of Values")
+                        Icon(Icons.Default.TableChart, contentDescription = "Table of Values", tint = Color(0xFFE2E8F0))
                     }
 
                     // Wrench / Graph Settings
@@ -241,11 +223,14 @@ fun GraphScreen(
                         onClick = { showSettingsSheet = true },
                         modifier = Modifier.testTag("graph_settings_btn")
                     ) {
-                        Icon(Icons.Default.Build, contentDescription = "Graph Settings")
+                        Icon(Icons.Default.Build, contentDescription = "Graph Settings", tint = Color(0xFFE2E8F0))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
+                    containerColor = Color(0xFF0F172A),
+                    titleContentColor = Color.White,
+                    navigationIconContentColor = Color.White,
+                    actionIconContentColor = Color(0xFFE2E8F0)
                 )
             )
         },
@@ -339,7 +324,7 @@ fun GraphScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 60.dp, max = if (isKeyboardVisible) 130.dp else 240.dp)
+                    .heightIn(min = 60.dp, max = if (isKeyboardVisible) 140.dp else 240.dp)
                     .background(Color.White)
             ) {
                 LazyColumn(
@@ -347,15 +332,16 @@ fun GraphScreen(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     itemsIndexed(functions, key = { _, fn -> fn.id }) { idx, fn ->
+                        val rowController = getOrCreateController(fn.id)
                         DesmosExpressionRow(
                             index = idx + 1,
                             function = fn,
                             isFocused = (focusedRowIndex == idx),
-                            cursorPos = if (focusedRowIndex == idx) cursorPos else -1,
+                            controller = rowController,
                             onRowClick = {
                                 focusedRowIndex = idx
-                                cursorPos = fn.expressionText.length
                                 isKeyboardVisible = true
+                                rowController.focus()
                             },
                             onToggleVisibility = {
                                 val updated = functions.toMutableList()
@@ -368,24 +354,37 @@ fun GraphScreen(
                                     updated.removeAt(idx)
                                     recordHistory(updated)
                                     focusedRowIndex = (idx - 1).coerceAtLeast(0)
-                                    cursorPos = functions[focusedRowIndex].expressionText.length
+                                    getOrCreateController(functions[focusedRowIndex].id).focus()
                                 } else {
                                     // Clear current row
+                                    rowController.clear()
                                     val updated = functions.toMutableList()
-                                    updated[0] = GraphFunction.create(fn.id, "", fn.colorIndexOrDefault())
+                                    updated[0] = GraphFunction.createFromLatex(fn.id, "", fn.colorIndexOrDefault())
                                     recordHistory(updated)
-                                    cursorPos = 0
                                 }
+                            },
+                            onUpdateLatex = { newLatex ->
+                                val updated = functions.toMutableList()
+                                val newFn = GraphFunction.createFromLatex(fn.id, newLatex, fn.colorIndexOrDefault())
+                                    .copy(
+                                        isVisible = fn.isVisible,
+                                        showDerivative = fn.showDerivative,
+                                        showTangent = fn.showTangent,
+                                        showIntegralArea = fn.showIntegralArea
+                                    )
+                                updated[idx] = newFn
+                                recordHistory(updated)
                             },
                             onUpdateFunction = { updatedFn ->
                                 val updated = functions.toMutableList()
                                 updated[idx] = updatedFn
                                 recordHistory(updated)
-                            }
+                            },
+                            onEnter = addNewExpression
                         )
                     }
 
-                    // Next empty prompt row indicator (Row 2 matching Screenshot 1 & 3)
+                    // Next empty prompt row indicator
                     item {
                         Row(
                             modifier = Modifier
@@ -423,12 +422,11 @@ fun GraphScreen(
             ) {
                 DesmosKeyboard(
                     onInsertText = handleInsertText,
+                    onInsertFunction = handleInsertFunction,
                     onBackspace = handleBackspace,
-                    onMoveCursorLeft = { cursorPos = (cursorPos - 1).coerceAtLeast(0) },
-                    onMoveCursorRight = {
-                        val maxLen = if (functions.isNotEmpty()) functions[focusedRowIndex.coerceIn(0, functions.size - 1)].expressionText.length else 0
-                        cursorPos = (cursorPos + 1).coerceAtMost(maxLen)
-                    },
+                    onMoveCursorLeft = { getActiveController()?.moveCursorLeft() },
+                    onMoveCursorRight = { getActiveController()?.moveCursorRight() },
+                    onNextSlot = { getActiveController()?.moveToNextSlot() },
                     onEnter = addNewExpression,
                     onAddExpression = addNewExpression,
                     onUndo = {
@@ -436,7 +434,7 @@ fun GraphScreen(
                             historyIndex--
                             functions = history[historyIndex]
                             focusedRowIndex = focusedRowIndex.coerceIn(0, functions.size - 1)
-                            cursorPos = functions[focusedRowIndex].expressionText.length
+                            getOrCreateController(functions[focusedRowIndex].id).setLatex(functions[focusedRowIndex].expressionText)
                         }
                     },
                     onRedo = {
@@ -444,7 +442,7 @@ fun GraphScreen(
                             historyIndex++
                             functions = history[historyIndex]
                             focusedRowIndex = focusedRowIndex.coerceIn(0, functions.size - 1)
-                            cursorPos = functions[focusedRowIndex].expressionText.length
+                            getOrCreateController(functions[focusedRowIndex].id).setLatex(functions[focusedRowIndex].expressionText)
                         }
                     },
                     onHideKeyboard = { isKeyboardVisible = false },

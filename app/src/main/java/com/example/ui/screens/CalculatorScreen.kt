@@ -25,6 +25,7 @@ import com.example.ui.viewmodel.CalculatorUiState
 enum class CalcScreenDestination {
     CALCULATOR,
     GRAPH,
+    MATHEMATICS,
     CALCULUS,
     JEE_TOOLKIT,
     PHYSICS,
@@ -156,6 +157,18 @@ fun CalculatorScreen(
                         label = { Text("JEE & Eng") },
                         leadingIcon = { Icon(Icons.Default.Engineering, contentDescription = null, modifier = Modifier.size(18.dp)) },
                         modifier = Modifier.testTag("chip_jee")
+                    )
+                }
+                item {
+                    AssistChip(
+                        onClick = { onNavigate(CalcScreenDestination.MATHEMATICS) },
+                        label = { Text("Mathematics") },
+                        leadingIcon = { Icon(Icons.Default.Calculate, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                        colors = AssistChipDefaults.assistChipColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                            labelColor = MaterialTheme.colorScheme.onTertiaryContainer
+                        ),
+                        modifier = Modifier.testTag("chip_mathematics")
                     )
                 }
                 item {

@@ -167,12 +167,61 @@ class CalculusParser(private val input: String) {
         }
 
         // Identifier: variable or function name
-        if (ch.isLetter()) {
+        if (ch.isLetter() || ch == 'π' || ch == 'θ') {
             val start = pos
             while (pos < text.length && (text[pos].isLetter() || text[pos].isDigit() || text[pos] == '_')) {
                 pos++
             }
-            val name = text.substring(start, pos)
+            var name = text.substring(start, pos)
+            skipWhitespace()
+
+            // Check if function name is followed by inverse/power superscript like sin^-1 or sin^{-1} or sin^2
+            if (pos < text.length && text[pos] == '^') {
+                pos++
+                skipWhitespace()
+                var powerStr = ""
+                if (pos < text.length && text[pos] == '{') {
+                    pos++
+                    val pStart = pos
+                    while (pos < text.length && text[pos] != '}') pos++
+                    powerStr = text.substring(pStart, pos)
+                    if (pos < text.length && text[pos] == '}') pos++
+                } else if (pos < text.length && (text[pos] == '-' || text[pos] == '+')) {
+                    val pStart = pos
+                    pos++
+                    while (pos < text.length && text[pos].isDigit()) pos++
+                    powerStr = text.substring(pStart, pos)
+                } else if (pos < text.length && text[pos].isDigit()) {
+                    val pStart = pos
+                    while (pos < text.length && text[pos].isDigit()) pos++
+                    powerStr = text.substring(pStart, pos)
+                }
+
+                if (powerStr == "-1") {
+                    name = when (name.lowercase(Locale.US)) {
+                        "sin" -> "asin"
+                        "cos" -> "acos"
+                        "tan" -> "atan"
+                        "cot" -> "acot"
+                        "sec" -> "asec"
+                        "csc", "cosec" -> "acsc"
+                        else -> "${name}^-1"
+                    }
+                } else if (powerStr.isNotEmpty()) {
+                    // e.g. sin^2(x) -> (sin(x))^2
+                    val pVal = powerStr.toDoubleOrNull()
+                    skipWhitespace()
+                    if (pos < text.length && text[pos] == '(') {
+                        pos++
+                        val arg = parseAddSub()
+                        skipWhitespace()
+                        if (pos < text.length && text[pos] == ')') pos++
+                        val baseFunc = Func(name, arg)
+                        return if (pVal != null) Pow(baseFunc, Constant(pVal)) else baseFunc
+                    }
+                }
+            }
+
             skipWhitespace()
 
             // Check if it's a function followed by '('
@@ -186,13 +235,26 @@ class CalculusParser(private val input: String) {
                 return Func(name, arg)
             }
 
-            // Special single-argument functions without paren if supported, or common constants
+            // Normalization of known function names if argument follows without parens (e.g. sin x -> sin(x))
             val lower = name.lowercase(Locale.US)
+            val isKnownFunc = lower in listOf(
+                "sin", "cos", "tan", "cot", "sec", "csc", "cosec",
+                "asin", "acos", "atan", "acot", "asec", "acsc", "acosec",
+                "arcsin", "arccos", "arctan", "arccot", "arcsec", "arccsc", "arccosec",
+                "sinh", "cosh", "tanh", "coth", "sech", "csch",
+                "ln", "log", "log10", "exp", "sqrt", "cbrt", "abs"
+            )
+
+            if (isKnownFunc && pos < text.length && (text[pos].isLetter() || text[pos] == '(' || text[pos].isDigit())) {
+                val arg = parsePower()
+                return Func(name, arg)
+            }
+
+            // Special single-argument functions without paren if supported, or common constants
             if (lower == "pi") return Variable("pi")
             if (lower == "e" && (pos >= text.length || text[pos] != '(')) {
                 // If it's e^x
                 if (pos < text.length && text[pos] == '^') {
-                    // Constant e base
                     return Constant(Math.E)
                 }
                 return Constant(Math.E)

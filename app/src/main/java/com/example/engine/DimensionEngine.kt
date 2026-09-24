@@ -52,6 +52,24 @@ data class Dimension(
         return sb.toString().trim() + "]"
     }
 
+    fun toLatexString(): String {
+        if (m == 0 && l == 0 && t == 0 && i == 0 && th == 0) return "[\\text{M}^0\\,\\text{L}^0\\,\\text{T}^0]"
+        val sb = StringBuilder("[")
+        fun appendUnit(letter: String, exp: Int) {
+            if (exp != 0) {
+                sb.append("\\text{").append(letter).append("}")
+                if (exp != 1) sb.append("^{").append(exp).append("}")
+                sb.append("\\,")
+            }
+        }
+        appendUnit("M", m)
+        appendUnit("L", l)
+        appendUnit("T", t)
+        appendUnit("A", i)
+        appendUnit("K", th)
+        return sb.toString().trimEnd('\\', ',') + "]"
+    }
+
     private fun toSuperscript(num: Int): String {
         val s = num.toString()
         val out = StringBuilder()

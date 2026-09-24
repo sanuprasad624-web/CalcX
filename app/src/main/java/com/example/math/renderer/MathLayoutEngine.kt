@@ -464,14 +464,27 @@ class MathLayoutEngine(
     }
 
     private fun measureFunction(node: FunctionNode, scale: Float): MathLayoutBox {
-        val funcNameBox = measureText(node.name, node, scale, isItalic = false, isBold = false)
+        val rawName = node.name.lowercase(java.util.Locale.US)
+        val (baseName, autoPower) = when (rawName) {
+            "asin", "arcsin" -> Pair("sin", NumberNode("-1"))
+            "acos", "arccos" -> Pair("cos", NumberNode("-1"))
+            "atan", "arctan" -> Pair("tan", NumberNode("-1"))
+            "acot", "arccot" -> Pair("cot", NumberNode("-1"))
+            "asec", "arcsec" -> Pair("sec", NumberNode("-1"))
+            "acsc", "arccsc" -> Pair("csc", NumberNode("-1"))
+            "acosec", "arccosec" -> Pair("cosec", NumberNode("-1"))
+            else -> Pair(node.name, node.power)
+        }
+
+        val funcNameBox = measureText(baseName, node, scale, isItalic = false, isBold = false)
         var nameUnit = funcNameBox
         if (node.base != null) {
             val baseBox = measureNode(node.base, scale * 0.7f)
             nameUnit = layoutSubscriptBox(nameUnit, baseBox, node, scale)
         }
-        if (node.power != null) {
-            val powBox = measureNode(node.power, scale * 0.7f)
+        val effectivePower = autoPower ?: node.power
+        if (effectivePower != null) {
+            val powBox = measureNode(effectivePower, scale * 0.7f)
             nameUnit = layoutPowerBox(nameUnit, powBox, node, scale)
         }
 

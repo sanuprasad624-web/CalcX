@@ -277,22 +277,39 @@ data class FunctionNode(
 
     override fun toLatex(): String = buildString {
         when (name.lowercase()) {
-            "sin", "cos", "tan", "sinh", "cosh", "tanh", "ln", "exp", "sec", "csc", "cot" -> append("\\$name")
-            "asin", "arcsin" -> append("\\arcsin")
-            "acos", "arccos" -> append("\\arccos")
-            "atan", "arctan" -> append("\\arctan")
-            "log" -> append("\\log")
+            "asin", "arcsin" -> append("\\sin^{-1}")
+            "acos", "arccos" -> append("\\cos^{-1}")
+            "atan", "arctan" -> append("\\tan^{-1}")
+            "acot", "arccot" -> append("\\cot^{-1}")
+            "asec", "arcsec" -> append("\\sec^{-1}")
+            "acsc", "arccsc", "acosec", "arccosec" -> append("\\csc^{-1}")
+            "sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "coth", "sech", "csch", "ln", "exp" -> append("\\$name")
+            "cosec" -> append("\\operatorname{cosec}")
+            "log", "log10" -> append("\\log")
             else -> append("\\text{$name}")
         }
         if (base != null) append("_{${base.toLatex()}}")
-        if (power != null) append("^{${power.toLatex()}}")
+        if (power != null && !name.lowercase().startsWith("a") && !name.lowercase().startsWith("arc")) {
+            append("^{${power.toLatex()}}")
+        }
         append("\\left(${argument.toLatex()}\\right)")
     }
 
     override fun toPlainText(): String = buildString {
-        append(name)
+        val displayName = when (name.lowercase()) {
+            "asin", "arcsin" -> "sin⁻¹"
+            "acos", "arccos" -> "cos⁻¹"
+            "atan", "arctan" -> "tan⁻¹"
+            "acot", "arccot" -> "cot⁻¹"
+            "asec", "arcsec" -> "sec⁻¹"
+            "acsc", "arccsc", "acosec", "arccosec" -> "csc⁻¹"
+            else -> name
+        }
+        append(displayName)
         if (base != null) append("_${base.toPlainText()}")
-        if (power != null) append("^(${power.toPlainText()})")
+        if (power != null && !name.lowercase().startsWith("a") && !name.lowercase().startsWith("arc")) {
+            append("^(${power.toPlainText()})")
+        }
         append("(${argument.toPlainText()})")
     }
 }

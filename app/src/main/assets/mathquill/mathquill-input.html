@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="mathquill.min.css">
+    <script src="jquery.min.js"></script>
+    <script src="mathquill.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            background-color: transparent !important;
+            background: transparent !important;
+            width: 100%;
+            height: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            font-family: 'Symbola', 'Times New Roman', serif;
+        }
+        #field-container {
+            display: flex;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            min-height: 38px;
+            padding: 0 4px;
+        }
+        #math-field {
+            font-size: 20px;
+            min-width: 100%;
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            outline: none !important;
+            color: #0f172a;
+            padding: 2px 0;
+        }
+        .mq-editable-field {
+            border: none !important;
+            box-shadow: none !important;
+            background: transparent !important;
+            font-size: 20px;
+            color: #0f172a;
+            outline: none !important;
+        }
+        .mq-cursor {
+            border-left: 2px solid #2563eb !important;
+            margin-right: -2px;
+        }
+        .mq-root-block {
+            display: inline-block;
+            white-space: nowrap;
+        }
+        .mq-empty {
+            background: rgba(37, 99, 235, 0.08) !important;
+            border-radius: 2px;
+            min-width: 8px;
+            min-height: 1em;
+            display: inline-block;
+        }
+        ::-webkit-scrollbar {
+            height: 3px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(148, 163, 184, 0.4);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+    <div id="field-container">
+        <span id="math-field"></span>
+    </div>
+
+    <script>
+        var MQ = null;
+        var mathField = null;
+        var pendingLatex = null;
+        var isInitializing = false;
+
+        window.onerror = function(msg, url, line) {
+            console.error("MathQuill error: " + msg + " at " + url + ":" + line);
+            if (window.AndroidBridge && window.AndroidBridge.onError) {
+                window.AndroidBridge.onError(msg);
+            }
+        };
+
+        function ensureMathField() {
+            if (mathField) return mathField;
+            initMathQuill();
+            return mathField;
+        }
+
+        function initMathQuill() {
+            if (mathField || isInitializing) return;
+            isInitializing = true;
+            try {
+                if (typeof MathQuill === 'undefined') {
+                    console.warn("MathQuill library not yet defined");
+                    isInitializing = false;
+                    return;
+                }
+                MQ = MathQuill.getInterface(2);
+                var el = document.getElementById('math-field');
+                if (!el) {
+                    isInitializing = false;
+                    return;
+                }
+
+                mathField = MQ.MathField(el, {
+                    spaceBehavesLikeTab: true,
+                    autoCommands: 'pi theta sqrt sum int prod',
+                    autoOperatorNames: 'sin cos tan cot sec csc cosec sinh cosh tanh coth sech csch ln log exp arcsin arccos arctan arccot arcsec arccsc',
+                    handlers: {
+                        edit: function() {
+                            if (window.AndroidBridge && window.AndroidBridge.onLatexChange) {
+                                var latex = mathField.latex();
+                                window.AndroidBridge.onLatexChange(latex);
+                            }
+                        },
+                        enter: function() {
+                            if (window.AndroidBridge && window.AndroidBridge.onEnter) {
+                                window.AndroidBridge.onEnter();
+                            }
+                        },
+                        moveOutOf: function(dir, field) {
+                            if (window.AndroidBridge && window.AndroidBridge.onMoveOutOf) {
+                                window.AndroidBridge.onMoveOutOf(dir > 0 ? "right" : "left");
+                            }
+                        }
+                    }
+                });
+
+                el.addEventListener('focusin', function() {
+                    if (window.AndroidBridge && window.AndroidBridge.onFocus) {
+                        window.AndroidBridge.onFocus();
+                    }
+                });
+
+                if (pendingLatex !== null) {
+                    mathField.latex(pendingLatex);
+                    pendingLatex = null;
+                }
+                isInitializing = false;
+            } catch (e) {
+                console.error("MathQuill init exception: " + e);
+                isInitializing = false;
+            }
+        }
+
+        // Bridge API Methods called by Android
+        function setLatex(latex) {
+            var mf = ensureMathField();
+            if (!mf) {
+                pendingLatex = latex;
+                return;
+            }
+            mf.latex(latex);
+        }
+
+        function getLatex() {
+            var mf = ensureMathField();
+            return mf ? mf.latex() : (pendingLatex || "");
+        }
+
+        function insertTypedText(text) {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.typedText(text);
+            mf.focus();
+        }
+
+        function insertCmd(cmd) {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.cmd(cmd);
+            mf.focus();
+        }
+
+        function insertWrite(latex) {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.write(latex);
+            mf.focus();
+        }
+
+        function insertFunction(fn) {
+            var mf = ensureMathField();
+            if (!mf) return;
+            switch(fn) {
+                // Inverse trigonometric functions: only write left bracket
+                case 'sin^-1':
+                case 'asin':
+                case 'arcsin':
+                    mf.write('\\sin^{-1}(');
+                    break;
+                case 'cos^-1':
+                case 'acos':
+                case 'arccos':
+                    mf.write('\\cos^{-1}(');
+                    break;
+                case 'tan^-1':
+                case 'atan':
+                case 'arctan':
+                    mf.write('\\tan^{-1}(');
+                    break;
+                case 'cot^-1':
+                case 'acot':
+                case 'arccot':
+                    mf.write('\\cot^{-1}(');
+                    break;
+                case 'sec^-1':
+                case 'asec':
+                case 'arcsec':
+                    mf.write('\\sec^{-1}(');
+                    break;
+                case 'csc^-1':
+                case 'acsc':
+                case 'arccsc':
+                case 'cosec^-1':
+                    mf.write('\\csc^{-1}(');
+                    break;
+
+                // Standard trigonometric & calculus functions: only write function name + left bracket
+                case 'sin':
+                case 'cos':
+                case 'tan':
+                case 'cot':
+                case 'sec':
+                case 'csc':
+                case 'cosec':
+                case 'sinh':
+                case 'cosh':
+                case 'tanh':
+                case 'coth':
+                case 'sech':
+                case 'csch':
+                case 'ln':
+                case 'log':
+                case 'exp':
+                    mf.write('\\' + fn + '(');
+                    break;
+
+                // Division / Fractions: typedText('/') pulls preceding number/expression into numerator and jumps cursor into denominator!
+                case 'fraction':
+                case '/':
+                case '÷':
+                    mf.typedText('/');
+                    break;
+
+                case '(':
+                    mf.typedText('(');
+                    break;
+
+                case ')':
+                    mf.typedText(')');
+                    break;
+
+                case 'sqrt':
+                    mf.cmd('\\sqrt');
+                    break;
+
+                case 'nthroot':
+                    mf.cmd('\\nthroot');
+                    break;
+
+                case 'abs':
+                    mf.write('|');
+                    break;
+
+                case 'power':
+                case '^':
+                    mf.cmd('^');
+                    break;
+
+                case 'power2':
+                case '^2':
+                    mf.cmd('^');
+                    mf.typedText('2');
+                    mf.keystroke('Right');
+                    break;
+
+                case 'subscript':
+                case '_':
+                    mf.cmd('_');
+                    break;
+
+                case 'pi':
+                case 'π':
+                    mf.cmd('\\pi');
+                    break;
+
+                case 'theta':
+                case 'θ':
+                    mf.cmd('\\theta');
+                    break;
+
+                case '<=':
+                case 'le':
+                    mf.cmd('\\le');
+                    break;
+
+                case '>=':
+                case 'ge':
+                    mf.cmd('\\ge');
+                    break;
+
+                default:
+                    mf.typedText(fn);
+                    break;
+            }
+            mf.focus();
+        }
+
+        function handleBackspace() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.keystroke('Backspace');
+            mf.focus();
+        }
+
+        function moveCursorLeft() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.keystroke('Left');
+            mf.focus();
+        }
+
+        function moveCursorRight() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.keystroke('Right');
+            mf.focus();
+        }
+
+        function moveCursorUp() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.keystroke('Up');
+            mf.focus();
+        }
+
+        function moveCursorDown() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.keystroke('Down');
+            mf.focus();
+        }
+
+        function moveToNextSlot() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.keystroke('Tab');
+            mf.focus();
+        }
+
+        function clearField() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.latex('');
+            mf.focus();
+        }
+
+        function focusField() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.focus();
+        }
+
+        function blurField() {
+            var mf = ensureMathField();
+            if (!mf) return;
+            mf.blur();
+        }
+
+        function setFontSize(sizePx) {
+            var el = document.querySelector('.mq-editable-field');
+            if (el) {
+                el.style.fontSize = sizePx + 'px';
+            }
+        }
+
+        function setTextColor(colorHex) {
+            var el = document.querySelector('.mq-editable-field');
+            if (el) {
+                el.style.color = colorHex;
+            }
+        }
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            initMathQuill();
+        } else {
+            document.addEventListener('DOMContentLoaded', initMathQuill);
+            window.addEventListener('load', initMathQuill);
+        }
+    </script>
+</body>
+</html>

@@ -307,16 +307,26 @@ data class Func(val name: String, val arg: Expr) : Expr {
             "sin" -> sin(a)
             "cos" -> cos(a)
             "tan" -> tan(a)
-            "asin" -> asin(a)
-            "acos" -> acos(a)
-            "atan" -> atan(a)
+            "cot" -> 1.0 / tan(a)
+            "sec" -> 1.0 / cos(a)
+            "csc", "cosec" -> 1.0 / sin(a)
+            "asin", "arcsin", "sin^-1", "sin^{-1}" -> asin(a)
+            "acos", "arccos", "cos^-1", "cos^{-1}" -> acos(a)
+            "atan", "arctan", "tan^-1", "tan^{-1}" -> atan(a)
+            "acot", "arccot", "cot^-1", "cot^{-1}" -> atan(1.0 / a)
+            "asec", "arcsec", "sec^-1", "sec^{-1}" -> acos(1.0 / a)
+            "acsc", "arccsc", "acosec", "arccosec", "csc^-1", "csc^{-1}", "cosec^-1", "cosec^{-1}" -> asin(1.0 / a)
             "sinh" -> sinh(a)
             "cosh" -> cosh(a)
             "tanh" -> tanh(a)
+            "coth" -> 1.0 / tanh(a)
+            "sech" -> 1.0 / cosh(a)
+            "csch" -> 1.0 / sinh(a)
             "ln" -> ln(a)
             "log", "log10" -> log10(a)
             "exp" -> exp(a)
             "sqrt" -> sqrt(a)
+            "cbrt" -> Math.cbrt(a)
             "abs" -> abs(a)
             else -> throw UnsupportedOperationException("Unknown function $name")
         }
@@ -327,11 +337,16 @@ data class Func(val name: String, val arg: Expr) : Expr {
         val derivFunc = when (name.lowercase()) {
             "sin" -> Func("cos", arg)
             "cos" -> Neg(Func("sin", arg))
-            "tan" -> Pow(Func("sec", arg), Constant(2.0)) // or 1 + tan^2(arg) -> Div(1, Pow(cos(arg), 2))
+            "tan" -> Pow(Func("sec", arg), Constant(2.0))
+            "cot" -> Neg(Pow(Func("csc", arg), Constant(2.0)))
             "sec" -> Mul(Func("sec", arg), Func("tan", arg))
-            "asin" -> Div(Constant(1.0), Func("sqrt", Sub(Constant(1.0), Pow(arg, Constant(2.0)))))
-            "acos" -> Neg(Div(Constant(1.0), Func("sqrt", Sub(Constant(1.0), Pow(arg, Constant(2.0))))))
-            "atan" -> Div(Constant(1.0), Add(Constant(1.0), Pow(arg, Constant(2.0))))
+            "csc", "cosec" -> Neg(Mul(Func("csc", arg), Func("cot", arg)))
+            "asin", "arcsin", "sin^-1", "sin^{-1}" -> Div(Constant(1.0), Func("sqrt", Sub(Constant(1.0), Pow(arg, Constant(2.0)))))
+            "acos", "arccos", "cos^-1", "cos^{-1}" -> Neg(Div(Constant(1.0), Func("sqrt", Sub(Constant(1.0), Pow(arg, Constant(2.0))))))
+            "atan", "arctan", "tan^-1", "tan^{-1}" -> Div(Constant(1.0), Add(Constant(1.0), Pow(arg, Constant(2.0))))
+            "acot", "arccot", "cot^-1", "cot^{-1}" -> Neg(Div(Constant(1.0), Add(Constant(1.0), Pow(arg, Constant(2.0)))))
+            "asec", "arcsec", "sec^-1", "sec^{-1}" -> Div(Constant(1.0), Mul(Func("abs", arg), Func("sqrt", Sub(Pow(arg, Constant(2.0)), Constant(1.0)))))
+            "acsc", "arccsc", "acosec", "arccosec", "csc^-1", "csc^{-1}", "cosec^-1", "cosec^{-1}" -> Neg(Div(Constant(1.0), Mul(Func("abs", arg), Func("sqrt", Sub(Pow(arg, Constant(2.0)), Constant(1.0))))))
             "sinh" -> Func("cosh", arg)
             "cosh" -> Func("sinh", arg)
             "tanh" -> Div(Constant(1.0), Pow(Func("cosh", arg), Constant(2.0)))
@@ -361,10 +376,14 @@ data class Func(val name: String, val arg: Expr) : Expr {
 
     override fun toLatex(): String = when (name.lowercase()) {
         "sqrt" -> "\\sqrt{${arg.toLatex()}}"
-        "sin", "cos", "tan", "sinh", "cosh", "tanh", "ln", "exp" -> "\\$name\\left(${arg.toLatex()}\\right)"
-        "asin" -> "\\arcsin\\left(${arg.toLatex()}\\right)"
-        "acos" -> "\\arccos\\left(${arg.toLatex()}\\right)"
-        "atan" -> "\\arctan\\left(${arg.toLatex()}\\right)"
+        "asin", "arcsin", "sin^-1", "sin^{-1}" -> "\\sin^{-1}\\left(${arg.toLatex()}\\right)"
+        "acos", "arccos", "cos^-1", "cos^{-1}" -> "\\cos^{-1}\\left(${arg.toLatex()}\\right)"
+        "atan", "arctan", "tan^-1", "tan^{-1}" -> "\\tan^{-1}\\left(${arg.toLatex()}\\right)"
+        "acot", "arccot", "cot^-1", "cot^{-1}" -> "\\cot^{-1}\\left(${arg.toLatex()}\\right)"
+        "asec", "arcsec", "sec^-1", "sec^{-1}" -> "\\sec^{-1}\\left(${arg.toLatex()}\\right)"
+        "acsc", "arccsc", "acosec", "arccosec", "csc^-1", "csc^{-1}", "cosec^-1", "cosec^{-1}" -> "\\csc^{-1}\\left(${arg.toLatex()}\\right)"
+        "sin", "cos", "tan", "cot", "sec", "csc", "sinh", "cosh", "tanh", "ln", "exp" -> "\\$name\\left(${arg.toLatex()}\\right)"
+        "cosec" -> "\\operatorname{cosec}\\left(${arg.toLatex()}\\right)"
         "log", "log10" -> "\\log_{10}\\left(${arg.toLatex()}\\right)"
         "abs" -> "\\left|${arg.toLatex()}\\right|"
         else -> "$name\\left(${arg.toLatex()}\\right)"
@@ -373,6 +392,12 @@ data class Func(val name: String, val arg: Expr) : Expr {
     override fun toDisplayString(): String = when (name.lowercase()) {
         "sqrt" -> "√(${arg.toDisplayString()})"
         "abs" -> "|${arg.toDisplayString()}|"
+        "asin", "arcsin", "sin^-1", "sin^{-1}" -> "sin⁻¹(${arg.toDisplayString()})"
+        "acos", "arccos", "cos^-1", "cos^{-1}" -> "cos⁻¹(${arg.toDisplayString()})"
+        "atan", "arctan", "tan^-1", "tan^{-1}" -> "tan⁻¹(${arg.toDisplayString()})"
+        "acot", "arccot", "cot^-1", "cot^{-1}" -> "cot⁻¹(${arg.toDisplayString()})"
+        "asec", "arcsec", "sec^-1", "sec^{-1}" -> "sec⁻¹(${arg.toDisplayString()})"
+        "acsc", "arccsc", "acosec", "arccosec", "csc^-1", "csc^{-1}", "cosec^-1", "cosec^{-1}" -> "csc⁻¹(${arg.toDisplayString()})"
         else -> "$name(${arg.toDisplayString()})"
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.components.MathView
 import com.example.engine.ConstantsLibrary
 import com.example.engine.PhysicalConstant
 
@@ -169,20 +170,20 @@ private fun ConstantCard(
                     shape = RoundedCornerShape(8.dp),
                     color = MaterialTheme.colorScheme.primaryContainer
                 ) {
-                    Text(
-                        text = item.symbol,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontFamily = FontFamily.Monospace
-                    )
+                    Box(modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+                        MathView(
+                            latex = item.symbol,
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
-            Text(
-                text = item.formattedString,
-                style = MaterialTheme.typography.bodyLarge,
+            MathView(
+                latex = item.formattedString,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.tertiary
             )

@@ -339,14 +339,23 @@ class MathCanvasRenderer(
                 drawScope.drawPath(path = path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Square))
             }
             DelimType.PAREN, DelimType.PAREN_CLOSE -> {
-                val midY = (top + bottom) / 2f
+                val h = bottom - top
+                val bowW = (width * 1.1f).coerceAtLeast(6f * strokeWidth)
                 val path = Path().apply {
                     if (isLeft) {
-                        moveTo(x + width, top)
-                        quadraticTo(x, midY, x + width, bottom)
+                        moveTo(x + bowW, top + 1f)
+                        cubicTo(
+                            x - (bowW * 0.2f), top + h * 0.25f,
+                            x - (bowW * 0.2f), bottom - h * 0.25f,
+                            x + bowW, bottom - 1f
+                        )
                     } else {
-                        moveTo(x, top)
-                        quadraticTo(x + width, midY, x, bottom)
+                        moveTo(x, top + 1f)
+                        cubicTo(
+                            x + bowW * 1.2f, top + h * 0.25f,
+                            x + bowW * 1.2f, bottom - h * 0.25f,
+                            x, bottom - 1f
+                        )
                     }
                 }
                 drawScope.drawPath(path = path, color = color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round))

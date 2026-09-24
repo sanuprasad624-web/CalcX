@@ -3,11 +3,14 @@ package com.example.math.graph
 import androidx.compose.ui.graphics.Color
 import com.example.math.calculus.CalculusParser
 import com.example.math.calculus.Expr
+import com.example.math.editor.MathInputModel
 
 data class GraphFunction(
     val id: String,
     val expressionText: String,
     val color: Color,
+    val mathModel: MathInputModel = MathInputModel.parseFromFlatString(expressionText),
+    val displayLatex: String = mathModel.toLatex(showCursor = false),
     val isVisible: Boolean = true,
     val parsedExpr: Expr? = null,
     val isImplicit: Boolean = false,
@@ -33,45 +36,49 @@ data class GraphFunction(
             Color(0xFFD63384)  // Pink
         )
 
-        fun create(id: String, expr: String, colorIndex: Int = 0): GraphFunction {
+        fun createFromLatex(id: String, latex: String, colorIndex: Int = 0): GraphFunction {
             val color = PALETTE[colorIndex % PALETTE.size]
-            val trimmed = expr.trim()
-            if (trimmed.isEmpty()) {
+            val trimmedLatex = latex.trim()
+
+            if (trimmedLatex.isBlank()) {
                 return GraphFunction(
                     id = id,
-                    expressionText = expr,
+                    expressionText = "",
                     color = color,
+                    displayLatex = "",
                     parsedExpr = null,
                     error = null
                 )
             }
 
+            val evaluatable = com.example.math.calculus.LatexToExprConverter.convertToEvaluatableString(trimmedLatex)
+
             return try {
-                if (trimmed.contains("=")) {
-                    val parts = trimmed.split("=")
+                if (evaluatable.contains("=")) {
+                    val parts = evaluatable.split("=")
                     if (parts.size == 2) {
                         val lhs = parts[0].trim()
                         val rhs = parts[1].trim()
                         if (lhs == "y" && !rhs.contains("y")) {
-                            // Explicit function y = f(x)
                             val parsed = CalculusParser.parse(rhs)
                             GraphFunction(
                                 id = id,
-                                expressionText = expr,
+                                expressionText = trimmedLatex,
                                 color = color,
+                                displayLatex = trimmedLatex,
                                 parsedExpr = parsed,
                                 isImplicit = false,
                                 error = null
                             )
                         } else {
-                            // Implicit equation F(x, y) = lhs - rhs = 0 (e.g. x^2 + y^2 = 5)
                             val leftExpr = CalculusParser.parse(lhs)
                             val rightExpr = CalculusParser.parse(rhs)
                             val diff = com.example.math.calculus.Sub(leftExpr, rightExpr).simplify()
                             GraphFunction(
                                 id = id,
-                                expressionText = expr,
+                                expressionText = trimmedLatex,
                                 color = color,
+                                displayLatex = trimmedLatex,
                                 parsedExpr = diff,
                                 isImplicit = true,
                                 implicitExpr = diff,
@@ -79,22 +86,41 @@ data class GraphFunction(
                             )
                         }
                     } else {
-                        val parsed = CalculusParser.parse(trimmed)
-                        GraphFunction(id = id, expressionText = expr, color = color, parsedExpr = parsed, error = null)
+                        val parsed = CalculusParser.parse(evaluatable)
+                        GraphFunction(
+                            id = id,
+                            expressionText = trimmedLatex,
+                            color = color,
+                            displayLatex = trimmedLatex,
+                            parsedExpr = parsed,
+                            error = null
+                        )
                     }
                 } else {
-                    val parsed = CalculusParser.parse(trimmed)
-                    GraphFunction(id = id, expressionText = expr, color = color, parsedExpr = parsed, error = null)
+                    val parsed = CalculusParser.parse(evaluatable)
+                    GraphFunction(
+                        id = id,
+                        expressionText = trimmedLatex,
+                        color = color,
+                        displayLatex = trimmedLatex,
+                        parsedExpr = parsed,
+                        error = null
+                    )
                 }
             } catch (e: Exception) {
                 GraphFunction(
                     id = id,
-                    expressionText = expr,
+                    expressionText = trimmedLatex,
                     color = color,
+                    displayLatex = trimmedLatex,
                     parsedExpr = null,
                     error = e.message ?: "Invalid syntax"
                 )
             }
+        }
+
+        fun create(id: String, expr: String, colorIndex: Int = 0): GraphFunction {
+            return createFromLatex(id, expr, colorIndex)
         }
     }
 }

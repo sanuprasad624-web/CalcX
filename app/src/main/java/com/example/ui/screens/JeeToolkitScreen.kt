@@ -17,10 +17,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.engine.*
 import com.example.math.CanonicalMathResult
 import com.example.math.calculus.CalculusEngine
 import com.example.ui.components.MathResultCard
+import com.example.ui.components.MathView
 
 enum class JeeSubTool(val label: String) {
     QUADRATIC("Quadratic"),
@@ -164,38 +166,20 @@ private fun QuadraticToolView(onSaveToNotebook: (String, String, String) -> Unit
             item {
                 when (res) {
                     is EquationResult.Quadratic -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Nature of Roots: ${res.natureOfRoots}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text("Discriminant Δ: ${res.discriminant}", style = MaterialTheme.typography.bodyMedium)
-                                HorizontalDivider()
-                                Text("Root 1: ${res.root1Display}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-                                Text("Root 2: ${res.root2Display}", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
-
-                                Text("Derivation Steps:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelLarge)
-                                res.steps.forEach { step ->
-                                    Text("• $step", style = MaterialTheme.typography.bodySmall)
-                                }
-
-                                Button(
-                                    onClick = {
-                                        onSaveToNotebook(
-                                            "Quadratic: ${aStr}x² + ${bStr}x + ${cStr} = 0",
-                                            "${res.root1Display}, ${res.root2Display}",
-                                            "Δ = ${res.discriminant}, ${res.natureOfRoots}"
-                                        )
-                                    },
-                                    modifier = Modifier.align(Alignment.End).padding(top = 8.dp)
-                                ) {
-                                    Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Save to Notebook")
-                                }
-                            }
-                        }
+                        val quadLatex = "x_1 = ${res.root1Display}, \\quad x_2 = ${res.root2Display}"
+                        MathResultCard(
+                            result = CanonicalMathResult(
+                                latex = quadLatex,
+                                displayString = "${res.root1Display}, ${res.root2Display}",
+                                steps = res.steps,
+                                isExact = true
+                            ),
+                            title = "Quadratic Roots: ${res.natureOfRoots}",
+                            calculationText = "${aStr}x^2 + ${bStr}x + ${cStr} = 0",
+                            formulaLatex = "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}",
+                            substitutionLatex = "\\Delta = (${bStr})^2 - 4(${aStr})(${cStr}) = ${res.discriminant}",
+                            onSaveToNotebook = onSaveToNotebook
+                        )
                     }
                     is EquationResult.Error -> {
                         Text(res.message, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
@@ -222,7 +206,10 @@ private fun LinearSystem2ToolView(onSaveToNotebook: (String, String, String) -> 
     LazyColumn(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
             Text("Simultaneous Equations (2 Variables)", fontWeight = FontWeight.Bold)
-            Text("Eq 1: a₁x + b₁y = c₁\nEq 2: a₂x + b₂y = c₂", style = MaterialTheme.typography.bodySmall)
+            MathView(
+                latex = "\\begin{cases} a_1 x + b_1 y = c_1 \\\\ a_2 x + b_2 y = c_2 \\end{cases}",
+                fontSize = 16.sp
+            )
         }
 
         item {
@@ -264,19 +251,19 @@ private fun LinearSystem2ToolView(onSaveToNotebook: (String, String, String) -> 
             item {
                 when (res) {
                     is EquationResult.LinearSystem2 -> {
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text("Solution:", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                                Text("x = ${"%.4f".format(res.x)}", style = MaterialTheme.typography.titleMedium)
-                                Text("y = ${"%.4f".format(res.y)}", style = MaterialTheme.typography.titleMedium)
-                                HorizontalDivider()
-                                Text("Steps (Cramer's Determinant Rule):", fontWeight = FontWeight.SemiBold)
-                                res.steps.forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) }
-                            }
-                        }
+                        val sysLatex = "x = ${String.format(java.util.Locale.US, "%.4f", res.x)}, \\quad y = ${String.format(java.util.Locale.US, "%.4f", res.y)}"
+                        MathResultCard(
+                            result = CanonicalMathResult(
+                                latex = sysLatex,
+                                displayString = "x = ${String.format(java.util.Locale.US, "%.4f", res.x)}, y = ${String.format(java.util.Locale.US, "%.4f", res.y)}",
+                                steps = res.steps,
+                                isExact = true
+                            ),
+                            title = "System Solution (Cramer's Rule)",
+                            calculationText = "\\begin{cases} ${a1}x + ${b1}y = $c1 \\\\ ${a2}x + ${b2}y = $c2 \\end{cases}",
+                            formulaLatex = "x = \\frac{D_x}{D}, \\quad y = \\frac{D_y}{D}",
+                            onSaveToNotebook = onSaveToNotebook
+                        )
                     }
                     is EquationResult.Error -> {
                         Text(res.message, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
@@ -311,7 +298,7 @@ private fun VectorToolView(onSaveToNotebook: (String, String, String) -> Unit) {
         }
 
         item {
-            Text("Vector A (xî + yĵ + zk̂)")
+            Text("Vector A (Ax î + Ay ĵ + Az k̂)")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = v1x, onValueChange = { v1x = it }, label = { Text("Ax") }, modifier = Modifier.weight(1f))
                 OutlinedTextField(value = v1y, onValueChange = { v1y = it }, label = { Text("Ay") }, modifier = Modifier.weight(1f))
@@ -320,7 +307,7 @@ private fun VectorToolView(onSaveToNotebook: (String, String, String) -> Unit) {
         }
 
         item {
-            Text("Vector B (xî + yĵ + zk̂)")
+            Text("Vector B (Bx î + By ĵ + Bz k̂)")
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = v2x, onValueChange = { v2x = it }, label = { Text("Bx") }, modifier = Modifier.weight(1f))
                 OutlinedTextField(value = v2y, onValueChange = { v2y = it }, label = { Text("By") }, modifier = Modifier.weight(1f))
@@ -337,14 +324,40 @@ private fun VectorToolView(onSaveToNotebook: (String, String, String) -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Calculated Results:", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text("|A| = ${"%.4f".format(vec1.magnitude)},  |B| = ${"%.4f".format(vec2.magnitude)}")
-                    Text("Dot Product (A · B): ${"%.4f".format(dot)}", fontWeight = FontWeight.SemiBold)
-                    Text("Cross Product (A × B): ${cross.toFormattedString()}", fontWeight = FontWeight.SemiBold)
-                    Text("Angle θ between A & B: ${"%.2f".format(angle)}°", fontWeight = FontWeight.SemiBold)
-                    Text("A + B: ${(vec1 + vec2).toFormattedString()}")
-                    Text("A - B: ${(vec1 - vec2).toFormattedString()}")
+                    
+                    MathView(
+                        latex = "\\vec{A} = ${v1x}\\hat{i} + ${v1y}\\hat{j} + ${v1z}\\hat{k}, \\quad |\\vec{A}| = ${String.format(java.util.Locale.US, "%.4f", vec1.magnitude)}",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "\\vec{B} = ${v2x}\\hat{i} + ${v2y}\\hat{j} + ${v2z}\\hat{k}, \\quad |\\vec{B}| = ${String.format(java.util.Locale.US, "%.4f", vec2.magnitude)}",
+                        fontSize = 16.sp
+                    )
+                    HorizontalDivider()
+                    MathView(
+                        latex = "\\vec{A} \\cdot \\vec{B} = ${String.format(java.util.Locale.US, "%.4f", dot)}",
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    MathView(
+                        latex = "\\vec{A} \\times \\vec{B} = ${cross.x}\\hat{i} + ${cross.y}\\hat{j} + ${cross.z}\\hat{k}",
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    MathView(
+                        latex = "\\theta = ${String.format(java.util.Locale.US, "%.2f", angle)}^\\circ",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "\\vec{A} + \\vec{B} = ${(vec1 + vec2).x}\\hat{i} + ${(vec1 + vec2).y}\\hat{j} + ${(vec1 + vec2).z}\\hat{k}",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "\\vec{A} - \\vec{B} = ${(vec1 - vec2).x}\\hat{i} + ${(vec1 - vec2).y}\\hat{j} + ${(vec1 - vec2).z}\\hat{k}",
+                        fontSize = 16.sp
+                    )
                 }
             }
         }
@@ -387,26 +400,47 @@ private fun ComplexToolView(onSaveToNotebook: (String, String, String) -> Unit) 
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Polar Forms & Conjugates:", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text("Z₁ Polar: ${c1.toPolarString()} (|Z₁| = ${"%.4f".format(c1.modulus)}, arg = ${"%.2f".format(c1.argumentDeg)}°)")
-                    Text("Z₂ Polar: ${c2.toPolarString()}")
-                    Text("Z₁ Conjugate: ${c1.conjugate().toCartesianString()}")
+                    
+                    MathView(
+                        latex = "Z_1 = ${c1.real} + ${c1.imag}i = ${String.format(java.util.Locale.US, "%.3f", c1.modulus)} e^{i ${String.format(java.util.Locale.US, "%.1f", c1.argumentDeg)}^\\circ}",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "Z_2 = ${c2.real} + ${c2.imag}i = ${String.format(java.util.Locale.US, "%.3f", c2.modulus)} e^{i ${String.format(java.util.Locale.US, "%.1f", c2.argumentDeg)}^\\circ}",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "\\overline{Z_1} = ${c1.real} - ${c1.imag}i",
+                        fontSize = 16.sp
+                    )
                     HorizontalDivider()
                     Text("Operations:", fontWeight = FontWeight.Bold)
-                    Text("Z₁ + Z₂ = ${(c1 + c2).toCartesianString()}")
-                    Text("Z₁ - Z₂ = ${(c1 - c2).toCartesianString()}")
-                    Text("Z₁ × Z₂ = ${(c1 * c2).toCartesianString()}")
+                    MathView(
+                        latex = "Z_1 + Z_2 = ${(c1 + c2).real} + ${(c1 + c2).imag}i",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "Z_1 - Z_2 = ${(c1 - c2).real} + ${(c1 - c2).imag}i",
+                        fontSize = 16.sp
+                    )
+                    MathView(
+                        latex = "Z_1 \\cdot Z_2 = ${(c1 * c2).real} + ${(c1 * c2).imag}i",
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     val divResult = try {
-                        "Z₁ ÷ Z₂ = ${(c1 / c2).toCartesianString()}"
+                        val res = c1 / c2
+                        "\\frac{Z_1}{Z_2} = ${String.format(java.util.Locale.US, "%.4f", res.real)} + ${String.format(java.util.Locale.US, "%.4f", res.imag)}i"
                     } catch (e: Exception) {
-                        "Z₁ ÷ Z₂: Division by zero"
+                        "\\text{Division by zero}"
                     }
-                    if (divResult.contains("Division by zero")) {
-                        Text(divResult, color = MaterialTheme.colorScheme.error)
-                    } else {
-                        Text(divResult)
-                    }
+                    MathView(
+                        latex = divResult,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
         }
@@ -450,11 +484,22 @@ private fun MomentOfInertiaToolView(onSaveToNotebook: (String, String, String) -
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(item.name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                     Text("Axis: ${item.axis}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium)
-                    Text("Formula: ${item.formulaText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text("Calculated: I = ${"%.5f".format(iVal)} kg·m²", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.tertiary)
+                    
+                    MathView(
+                        latex = item.formulaText,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    
+                    MathView(
+                        latex = "I = ${String.format(java.util.Locale.US, "%.5f", iVal)}\\text{ kg}\\cdot\\text{m}^2",
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        fontWeight = FontWeight.Bold
+                    )
                     Text(item.explanation, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -561,12 +606,11 @@ private fun DimensionToolView() {
                                 shape = RoundedCornerShape(6.dp),
                                 color = MaterialTheme.colorScheme.surface
                             ) {
-                                Text(
-                                    text = q.dimension.toFormattedString(),
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    fontWeight = FontWeight.Bold,
+                                MathView(
+                                    latex = q.dimension.toLatexString(),
+                                    fontSize = 14.sp,
                                     color = MaterialTheme.colorScheme.primary,
-                                    style = MaterialTheme.typography.bodySmall
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -584,9 +628,9 @@ private fun DimensionToolView() {
                     modifier = Modifier.padding(16.dp).fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = activeDim.toFormattedString(),
-                        style = MaterialTheme.typography.headlineMedium,
+                    MathView(
+                        latex = activeDim.toLatexString(),
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -622,7 +666,11 @@ private fun DimensionToolView() {
                                 Text(q.name, fontWeight = FontWeight.Bold)
                                 Text("SI Unit: ${q.siUnit}", style = MaterialTheme.typography.bodySmall)
                             }
-                            Text(q.dimension.toFormattedString(), fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
+                            MathView(
+                                latex = q.dimension.toLatexString(),
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }

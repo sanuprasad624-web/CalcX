@@ -402,10 +402,22 @@ private fun CanonicalFormulaCard(
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text("Variables & Parameters:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.SemiBold)
                             formula.variables.forEach { v ->
-                                Text(
-                                    "• ${v.symbol}: ${v.name}${if (v.unit.isNotEmpty()) " [${v.unit}]" else ""}",
-                                    style = MaterialTheme.typography.bodySmall
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("•", style = MaterialTheme.typography.bodySmall)
+                                    MathView(
+                                        latex = v.symbol,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Text(
+                                        ": ${v.name}${if (v.unit.isNotEmpty()) " [${v.unit}]" else ""}",
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                }
                             }
                         }
                     }

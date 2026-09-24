@@ -194,50 +194,51 @@ fun DisplaySection(
                     )
                 } else {
                     val activeResult = if (isExactMode && exactResult.isNotEmpty()) exactResult else resultPreview
-                    val hasLatex = activeResult.contains("\\frac") || activeResult.contains("\\pi") || activeResult.contains("\\sqrt")
 
-                    if (hasLatex) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.End,
-                            modifier = Modifier.testTag("result_display")
-                        ) {
-                            Text(
-                                text = "= ",
-                                style = MaterialTheme.typography.headlineMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 28.sp
-                                ),
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            MathView(
-                                latex = activeResult,
-                                fontSize = 28.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("result_display")
+                    ) {
                         Text(
-                            text = "= $activeResult",
+                            text = "= ",
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 32.sp
+                                fontSize = 28.sp
                             ),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        MathView(
+                            latex = activeResult,
+                            fontSize = 28.sp,
                             color = MaterialTheme.colorScheme.primary,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.testTag("result_display")
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.weight(1f, fill = false)
                         )
                     }
 
                     // Secondary exact/decimal preview if available
                     if (exactResult.isNotEmpty() && exactResult != resultPreview) {
-                        Text(
-                            text = if (isExactMode) "≈ $resultPreview" else "Exact: $exactResult",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.End
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.End,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (isExactMode) "≈ " else "Exact: ",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val secText = if (isExactMode) resultPreview else exactResult
+                            MathView(
+                                latex = secText,
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
             }

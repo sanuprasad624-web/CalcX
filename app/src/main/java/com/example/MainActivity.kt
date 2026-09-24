@@ -119,6 +119,21 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        CalcScreenDestination.MATHEMATICS -> {
+                            MathematicsScreen(
+                                onBack = { currentScreen = CalcScreenDestination.CALCULATOR },
+                                onSaveToNotebook = { title, calc, res ->
+                                    viewModel.addNote(
+                                        title = title,
+                                        calculationText = calc,
+                                        result = res,
+                                        note = "",
+                                        category = "Mathematics"
+                                    )
+                                }
+                            )
+                        }
+
                         CalcScreenDestination.CALCULUS -> {
                             CalculusScreen(
                                 onBack = { currentScreen = CalcScreenDestination.CALCULATOR },

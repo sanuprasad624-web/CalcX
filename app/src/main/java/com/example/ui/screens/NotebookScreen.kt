@@ -21,7 +21,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.NotebookEntity
+import com.example.ui.components.MathView
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -135,10 +137,26 @@ fun NotebookScreen(
                                 }
 
                                 if (note.calculationText.isNotEmpty()) {
-                                    Text("Calculation: ${note.calculationText}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Calc: ", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        MathView(
+                                            latex = note.calculationText,
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    }
                                 }
                                 if (note.result.isNotEmpty()) {
-                                    Text("Result = ${note.result}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("= ", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        MathView(
+                                            latex = note.result,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                                 if (note.note.isNotEmpty()) {
                                     Text(note.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

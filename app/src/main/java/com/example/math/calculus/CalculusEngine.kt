@@ -51,7 +51,7 @@ object CalculusEngine {
 
     /**
      * Differentiate f(x) with respect to variable [variable] up to order [order].
-     * Optionally evaluate at [atPoint].
+     * Generates comprehensive, multi-step mathematical derivations.
      */
     fun differentiate(
         expressionStr: String,
@@ -63,18 +63,27 @@ object CalculusEngine {
             val ast = CalculusParser.parse(expressionStr)
             val steps = mutableListOf<String>()
 
-            steps.add("Given expression: f($variable) = ${ast.toDisplayString()}")
+            steps.add("\\text{Given function: } f($variable) = ${ast.toLatex()}")
 
             var current = ast
             for (i in 1..order) {
-                val next = current.differentiate(variable).simplify()
                 val orderLabel = when (i) {
-                    1 -> "1st derivative f'($variable)"
-                    2 -> "2nd derivative f''($variable)"
-                    3 -> "3rd derivative f'''($variable)"
-                    else -> "${i}th derivative"
+                    1 -> "f'($variable) = \\frac{d}{d$variable}\\left[ f($variable) \\right]"
+                    2 -> "f''($variable) = \\frac{d^2}{d$variable^2}\\left[ f($variable) \\right]"
+                    3 -> "f'''($variable) = \\frac{d^3}{d$variable^3}\\left[ f($variable) \\right]"
+                    else -> "f^{($i)}($variable) = \\frac{d^$i}{d$variable^$i}\\left[ f($variable) \\right]"
                 }
-                steps.add("Differentiating: $orderLabel = ${next.toDisplayString()}")
+
+                if (order > 1) {
+                    steps.add("\\textbf{Step } $i: \\text{Computing } $orderLabel")
+                }
+
+                // Generate detailed derivation steps for this differentiation pass
+                val passSteps = generateDiffStepsForExpr(current, variable)
+                steps.addAll(passSteps)
+
+                val next = current.differentiate(variable).simplify()
+                steps.add("\\textbf{Simplified derivative: } $orderLabel = ${next.toLatex()}")
                 current = next
             }
 
@@ -99,7 +108,8 @@ object CalculusEngine {
                         String.format(java.util.Locale.US, "%.6f", v).trimEnd('0').trimEnd('.')
                     }
                 }
-                steps.add("Evaluated at $variable = $atPoint: f^($order)($atPoint) = $ptValueExact (≈ ${String.format(java.util.Locale.US, "%.6f", v)})")
+                steps.add("\\textbf{Evaluation at } $variable = $atPoint:")
+                steps.add("f^{($order)}($atPoint) = ${formatSubstitution(finalExpr, variable, atPoint)} = $ptValueExact \\; (\\approx ${String.format(java.util.Locale.US, "%.6f", v)})")
             }
 
             return DifferentiationResult(
@@ -130,7 +140,145 @@ object CalculusEngine {
     }
 
     /**
-     * Compute indefinite integral: ∫ f(x) dx
+     * Helper to recursively break down differentiation steps of an expression AST.
+     */
+    private fun generateDiffStepsForExpr(expr: Expr, v: String): List<String> {
+        val steps = mutableListOf<String>()
+        val terms = extractAddSubTerms(expr)
+
+        if (terms.size > 1) {
+            val termsExpansion = terms.joinToString(" ") { (isPos, t) ->
+                val sign = if (isPos) "+" else "-"
+                "$sign \\frac{d}{d$v}\\left[ ${t.toLatex()} \\right]"
+            }.removePrefix("+ ")
+
+            steps.add("\\text{Apply Sum/Difference Rule: } \\frac{d}{d$v}\\left[ ${expr.toLatex()} \\right] = $termsExpansion")
+
+            val termDerivatives = mutableListOf<String>()
+            terms.forEachIndexed { idx, (isPos, t) ->
+                val termStep = explainSingleTermDerivative(t, v)
+                steps.add("\\text{Term } ${idx + 1}: $termStep")
+                val dt = t.differentiate(v).simplify().toLatex()
+                val sign = if (isPos) "+" else "-"
+                termDerivatives.add("$sign $dt")
+            }
+
+            val unsimpCombined = termDerivatives.joinToString(" ").removePrefix("+ ")
+            steps.add("\\text{Combine derivatives: } \\frac{d}{d$v}\\left[ ${expr.toLatex()} \\right] = $unsimpCombined")
+        } else {
+            steps.add(explainSingleTermDerivative(expr, v))
+        }
+
+        return steps
+    }
+
+    /**
+     * Explains the differentiation rule applied to a single term.
+     */
+    private fun explainSingleTermDerivative(expr: Expr, v: String): String {
+        return when (expr) {
+            is Constant -> {
+                "\\text{Constant Rule: } \\frac{d}{d$v}\\left[ ${expr.toLatex()} \\right] = 0"
+            }
+            is Variable -> {
+                if (expr.name == v) {
+                    "\\text{Linear Power Rule: } \\frac{d}{d$v}\\left[ $v \\right] = 1"
+                } else {
+                    "\\text{Treating } ${expr.name} \\text{ as constant: } \\frac{d}{d$v}\\left[ ${expr.name} \\right] = 0"
+                }
+            }
+            is Pow -> {
+                if (expr.base is Variable && expr.base.name == v && expr.exp is Constant) {
+                    val n = expr.exp.value
+                    val nMinus1 = n - 1
+                    val nMinus1Str = if (nMinus1 == 1.0) "" else if (abs(nMinus1 - Math.round(nMinus1)) < 1e-9) "^{${Math.round(nMinus1)}}" else "^{$nMinus1}"
+                    val nStr = if (abs(n - Math.round(n)) < 1e-9) "${Math.round(n)}" else "$n"
+                    "\\text{Power Rule } \\left(\\frac{d}{d$v}[$v^n] = n $v^{n-1}\\right): \\frac{d}{d$v}\\left[ $v^{${expr.exp.toLatex()}} \\right] = $nStr $v$nMinus1Str"
+                } else if (expr.base is Constant && expr.exp is Variable && expr.exp.name == v) {
+                    "\\text{Exponential Rule } \\left(\\frac{d}{d$v}[a^$v] = a^$v \\ln(a)\\right): \\frac{d}{d$v}\\left[ ${expr.base.toLatex()}^$v \\right] = ${expr.base.toLatex()}^$v \\ln(${expr.base.toLatex()})"
+                } else {
+                    val u = expr.base.toLatex()
+                    val du = expr.base.differentiate(v).simplify().toLatex()
+                    "\\text{Chain & Power Rule: } \\frac{d}{d$v}\\left[ \\left($u\\right)^{${expr.exp.toLatex()}} \\right] = ${expr.exp.toLatex()} \\left($u\\right)^{${expr.exp.toLatex()}-1} \\cdot \\left($du\\right)"
+                }
+            }
+            is Mul -> {
+                if (expr.left is Constant) {
+                    val c = expr.left.toLatex()
+                    val r = expr.right.toLatex()
+                    val dr = expr.right.differentiate(v).simplify().toLatex()
+                    "\\text{Constant Multiple Rule: } \\frac{d}{d$v}\\left[ $c \\cdot $r \\right] = $c \\cdot \\frac{d}{d$v}\\left[ $r \\right] = $c \\left($dr\\right)"
+                } else if (expr.right is Constant) {
+                    val c = expr.right.toLatex()
+                    val l = expr.left.toLatex()
+                    val dl = expr.left.differentiate(v).simplify().toLatex()
+                    "\\text{Constant Multiple Rule: } \\frac{d}{d$v}\\left[ $l \\cdot $c \\right] = $c \\cdot \\frac{d}{d$v}\\left[ $l \\right] = $c \\left($dl\\right)"
+                } else {
+                    val u = expr.left.toLatex()
+                    val w = expr.right.toLatex()
+                    val du = expr.left.differentiate(v).simplify().toLatex()
+                    val dw = expr.right.differentiate(v).simplify().toLatex()
+                    "\\text{Product Rule } \\left(\\frac{d}{d$v}[u \\cdot w] = u'w + uw'\\right): \\frac{d}{d$v}\\left[ ($u)($w) \\right] = \\left($du\\right)($w) + ($u)\\left($dw\\right)"
+                }
+            }
+            is Div -> {
+                if (expr.right is Constant) {
+                    val c = expr.right.toLatex()
+                    val l = expr.left.toLatex()
+                    val dl = expr.left.differentiate(v).simplify().toLatex()
+                    "\\text{Constant Divisor Rule: } \\frac{d}{d$v}\\left[ \\frac{$l}{$c} \\right] = \\frac{1}{$c} \\frac{d}{d$v}\\left[ $l \\right] = \\frac{$dl}{$c}"
+                } else {
+                    val u = expr.left.toLatex()
+                    val w = expr.right.toLatex()
+                    val du = expr.left.differentiate(v).simplify().toLatex()
+                    val dw = expr.right.differentiate(v).simplify().toLatex()
+                    "\\text{Quotient Rule } \\left(\\frac{d}{d$v}\\left[\\frac{u}{w}\\right] = \\frac{u'w - uw'}{w^2}\\right): \\frac{d}{d$v}\\left[ \\frac{$u}{$w} \\right] = \\frac{\\left($du\\right)($w) - ($u)\\left($dw\\right)}{\\left($w\\right)^2}"
+                }
+            }
+            is Func -> {
+                val argLatex = expr.arg.toLatex()
+                val dArg = expr.arg.differentiate(v).simplify()
+                val dArgLatex = dArg.toLatex()
+                val isSimpleVar = expr.arg is Variable && expr.arg.name == v
+
+                when (expr.name.lowercase()) {
+                    "sin" -> {
+                        if (isSimpleVar) "\\text{Trig Rule: } \\frac{d}{d$v}\\left[ \\sin($v) \\right] = \\cos($v)"
+                        else "\\text{Chain Rule with Sine: } \\frac{d}{d$v}\\left[ \\sin($argLatex) \\right] = \\cos($argLatex) \\cdot \\frac{d}{d$v}[$argLatex] = \\cos($argLatex) \\cdot ($dArgLatex)"
+                    }
+                    "cos" -> {
+                        if (isSimpleVar) "\\text{Trig Rule: } \\frac{d}{d$v}\\left[ \\cos($v) \\right] = -\\sin($v)"
+                        else "\\text{Chain Rule with Cosine: } \\frac{d}{d$v}\\left[ \\cos($argLatex) \\right] = -\\sin($argLatex) \\cdot \\frac{d}{d$v}[$argLatex] = -\\sin($argLatex) \\cdot ($dArgLatex)"
+                    }
+                    "tan" -> {
+                        if (isSimpleVar) "\\text{Trig Rule: } \\frac{d}{d$v}\\left[ \\tan($v) \\right] = \\sec^2($v)"
+                        else "\\text{Chain Rule with Tangent: } \\frac{d}{d$v}\\left[ \\tan($argLatex) \\right] = \\sec^2($argLatex) \\cdot ($dArgLatex)"
+                    }
+                    "ln" -> {
+                        if (isSimpleVar) "\\text{Log Rule: } \\frac{d}{d$v}\\left[ \\ln($v) \\right] = \\frac{1}{$v}"
+                        else "\\text{Chain Rule with Natural Log: } \\frac{d}{d$v}\\left[ \\ln($argLatex) \\right] = \\frac{1}{$argLatex} \\cdot ($dArgLatex)"
+                    }
+                    "exp" -> {
+                        if (isSimpleVar) "\\text{Exponential Rule: } \\frac{d}{d$v}\\left[ e^{$v} \\right] = e^{$v}"
+                        else "\\text{Chain Rule with Exponential: } \\frac{d}{d$v}\\left[ e^{$argLatex} \\right] = e^{$argLatex} \\cdot ($dArgLatex)"
+                    }
+                    "sqrt" -> {
+                        if (isSimpleVar) "\\text{Square Root Rule: } \\frac{d}{d$v}\\left[ \\sqrt{$v} \\right] = \\frac{1}{2\\sqrt{$v}}"
+                        else "\\text{Chain Rule with Square Root: } \\frac{d}{d$v}\\left[ \\sqrt{$argLatex} \\right] = \\frac{1}{2\\sqrt{$argLatex}} \\cdot ($dArgLatex)"
+                    }
+                    else -> "\\text{Function Rule: } \\frac{d}{d$v}\\left[ ${expr.name}($argLatex) \\right] = ${expr.name}'($argLatex) \\cdot ($dArgLatex)"
+                }
+            }
+            is Neg -> {
+                val inStep = explainSingleTermDerivative(expr.inner, v)
+                "\\text{Negation Rule: } \\frac{d}{d$v}\\left[ -${expr.inner.toLatex()} \\right] = -\\frac{d}{d$v}\\left[ ${expr.inner.toLatex()} \\right] \\implies $inStep"
+            }
+            else -> "\\frac{d}{d$v}\\left[ ${expr.toLatex()} \\right] = ${expr.differentiate(v).simplify().toLatex()}"
+        }
+    }
+
+    /**
+     * Compute indefinite integral: ∫ f(x) dx with full step-by-step mathematical reasoning.
      */
     fun integrateIndefinite(
         expressionStr: String,
@@ -139,15 +287,55 @@ object CalculusEngine {
         try {
             val ast = CalculusParser.parse(expressionStr)
             val steps = mutableListOf<String>()
-            steps.add("Integrand: f($variable) = ${ast.toDisplayString()}")
+            steps.add("\\text{Integrand: } f($variable) = ${ast.toLatex()}")
+            steps.add("\\text{Set up integral: } I = \\int \\left( ${ast.toLatex()} \\right)\\,d$variable")
 
-            val antiderivative = integrateSymbolic(ast, variable, steps)
+            val terms = extractAddSubTerms(ast)
+            val antiderivative: Expr?
+
+            if (terms.size > 1) {
+                val expansionStr = terms.joinToString(" ") { (isPos, t) ->
+                    val sign = if (isPos) "+" else "-"
+                    "$sign \\int \\left(${t.toLatex()}\\right)\\,d$variable"
+                }.removePrefix("+ ")
+
+                steps.add("\\text{Apply Linearity / Sum Rule: } I = $expansionStr")
+
+                val integratedTerms = mutableListOf<Expr>()
+                var allSucceeded = true
+
+                terms.forEachIndexed { idx, (isPos, t) ->
+                    val termSteps = mutableListOf<String>()
+                    val res = integrateSymbolic(t, variable, termSteps)
+                    if (res != null) {
+                        termSteps.forEach { steps.add("\\text{Term } ${idx + 1}: $it") }
+                        val termRes = if (isPos) res else Neg(res)
+                        integratedTerms.add(termRes)
+                    } else {
+                        allSucceeded = false
+                    }
+                }
+
+                if (allSucceeded) {
+                    var combined: Expr = integratedTerms.first()
+                    for (k in 1 until integratedTerms.size) {
+                        val t = integratedTerms[k]
+                        combined = if (t is Neg) Sub(combined, t.inner) else Add(combined, t)
+                    }
+                    antiderivative = combined.simplify()
+                } else {
+                    antiderivative = integrateSymbolic(ast, variable, steps)
+                }
+            } else {
+                antiderivative = integrateSymbolic(ast, variable, steps)
+            }
 
             if (antiderivative != null) {
                 val simp = antiderivative.simplify()
                 val latex = "${simp.toLatex()} + C"
                 val display = "${simp.toDisplayString()} + C"
-                steps.add("Antiderivative: F($variable) = ${simp.toDisplayString()} + C")
+                steps.add("\\textbf{Combine integrated terms: } F($variable) = ${simp.toLatex()}")
+                steps.add("\\textbf{Final Antiderivative: } \\int f($variable)\\,d$variable = $latex")
 
                 return IndefiniteIntegralResult(
                     originalExpr = expressionStr,
@@ -160,13 +348,16 @@ object CalculusEngine {
                     isSuccess = true
                 )
             } else {
+                steps.add("\\text{Note: No elementary closed-form symbolic antiderivative found in terms of standard algebraic/trigonometric functions.}")
+                steps.add("\\text{Definite integration via adaptive Simpson's 1/3 numerical quadrature is supported.}")
+
                 return IndefiniteIntegralResult(
                     originalExpr = expressionStr,
                     variable = variable,
                     antiderivativeExpr = null,
                     resultLatex = "\\int \\left(${ast.toLatex()}\\right)\\,d$variable",
                     resultDisplay = "∫ (${ast.toDisplayString()}) d$variable",
-                    steps = listOf("No elementary closed-form symbolic antiderivative found. Definite integration via numerical quadrature is supported."),
+                    steps = steps,
                     isSymbolic = false,
                     isSuccess = true
                 )
@@ -185,23 +376,22 @@ object CalculusEngine {
     }
 
     /**
-     * Symbolic integration recursive matcher
+     * Symbolic integration recursive matcher with detailed step explanations.
      */
     private fun integrateSymbolic(expr: Expr, v: String, steps: MutableList<String>): Expr? {
         when (expr) {
             is Constant -> {
                 // ∫ k dx = k * x
-                steps.add("Constant rule: ∫ ${expr.toDisplayString()} d$v = ${expr.toDisplayString()}$v")
+                steps.add("\\text{Constant Rule: } \\int ${expr.toLatex()}\\,d$v = ${expr.toLatex()} $v")
                 return Mul(expr, Variable(v))
             }
             is Variable -> {
                 if (expr.name == v) {
                     // ∫ x dx = x^2 / 2
-                    steps.add("Power rule on $v: ∫ $v d$v = $v² / 2")
+                    steps.add("\\text{Power Rule: } \\int $v\\,d$v = \\frac{$v^2}{2}")
                     return Div(Pow(expr, Constant(2.0)), Constant(2.0))
                 } else {
-                    // Constant variable w.r.t v
-                    steps.add("Treating ${expr.name} as constant w.r.t $v: ∫ ${expr.name} d$v = ${expr.name}$v")
+                    steps.add("\\text{Treating } ${expr.name} \\text{ as constant: } \\int ${expr.name}\\,d$v = ${expr.name} $v")
                     return Mul(expr, Variable(v))
                 }
             }
@@ -222,30 +412,67 @@ object CalculusEngine {
             is Mul -> {
                 // If left is constant: ∫ k * f(x) dx = k * ∫ f(x) dx
                 if (expr.left is Constant) {
-                    val rInt = integrateSymbolic(expr.right, v, steps) ?: return null
+                    val c = expr.left.toLatex()
+                    val r = expr.right.toLatex()
+                    val dummy = mutableListOf<String>()
+                    val rInt = integrateSymbolic(expr.right, v, dummy) ?: return null
+                    steps.add("\\text{Constant Multiple Rule: } \\int $c \\cdot $r\\,d$v = $c \\int $r\\,d$v = $c \\left(${rInt.toLatex()}\\right)")
                     return Mul(expr.left, rInt)
                 }
                 // If right is constant
                 if (expr.right is Constant) {
-                    val lInt = integrateSymbolic(expr.left, v, steps) ?: return null
+                    val c = expr.right.toLatex()
+                    val l = expr.left.toLatex()
+                    val dummy = mutableListOf<String>()
+                    val lInt = integrateSymbolic(expr.left, v, dummy) ?: return null
+                    steps.add("\\text{Constant Multiple Rule: } \\int $l \\cdot $c\\,d$v = $c \\int $l\\,d$v = $c \\left(${lInt.toLatex()}\\right)")
                     return Mul(expr.right, lInt)
+                }
+
+                // Integration by parts patterns:
+                // x * sin(x) -> -x cos(x) + sin(x)
+                if (expr.left is Variable && expr.left.name == v && expr.right is Func && expr.right.arg is Variable && expr.right.arg.name == v) {
+                    when (expr.right.name.lowercase()) {
+                        "sin" -> {
+                            steps.add("\\text{Integration by Parts } \\left(\\int u\\,dv = uv - \\int v\\,du\\right):")
+                            steps.add("\\text{Let } u = $v \\implies du = d$v, \\quad dv = \\sin($v)d$v \\implies v = -\\cos($v)")
+                            steps.add("\\int $v \\sin($v)\\,d$v = ($v)(-\\cos $v) - \\int (-\\cos $v)d$v = -$v\\cos($v) + \\sin($v)")
+                            return Add(Neg(Mul(Variable(v), Func("cos", Variable(v)))), Func("sin", Variable(v)))
+                        }
+                        "cos" -> {
+                            steps.add("\\text{Integration by Parts } \\left(\\int u\\,dv = uv - \\int v\\,du\\right):")
+                            steps.add("\\text{Let } u = $v \\implies du = d$v, \\quad dv = \\cos($v)d$v \\implies v = \\sin($v)")
+                            steps.add("\\int $v \\cos($v)\\,d$v = ($v)(\\sin $v) - \\int \\sin($v)d$v = $v\\sin($v) + \\cos($v)")
+                            return Add(Mul(Variable(v), Func("sin", Variable(v))), Func("cos", Variable(v)))
+                        }
+                        "exp" -> {
+                            steps.add("\\text{Integration by Parts } \\left(\\int u\\,dv = uv - \\int v\\,du\\right):")
+                            steps.add("\\text{Let } u = $v \\implies du = d$v, \\quad dv = e^{$v}d$v \\implies v = e^{$v}")
+                            steps.add("\\int $v e^{$v}\\,d$v = $v e^{$v} - \\int e^{$v}d$v = $v e^{$v} - e^{$v}")
+                            return Sub(Mul(Variable(v), Func("exp", Variable(v))), Func("exp", Variable(v)))
+                        }
+                    }
                 }
                 return null
             }
             is Div -> {
                 // f(x) / k = (1/k) * f(x)
                 if (expr.right is Constant && abs(expr.right.value) > 1e-15) {
-                    val lInt = integrateSymbolic(expr.left, v, steps) ?: return null
+                    val c = expr.right.toLatex()
+                    val l = expr.left.toLatex()
+                    val dummy = mutableListOf<String>()
+                    val lInt = integrateSymbolic(expr.left, v, dummy) ?: return null
+                    steps.add("\\text{Constant Divisor Rule: } \\int \\frac{$l}{$c}\\,d$v = \\frac{1}{$c} \\int $l\\,d$v = \\frac{${lInt.toLatex()}}{$c}")
                     return Div(lInt, expr.right)
                 }
                 // 1 / x -> ln|x|
                 if (expr.left is Constant && expr.left.isOne && expr.right is Variable && expr.right.name == v) {
-                    steps.add("Reciprocal rule: ∫ (1/$v) d$v = ln|$v|")
+                    steps.add("\\text{Reciprocal Rule: } \\int \\frac{1}{$v}\\,d$v = \\ln|$v|")
                     return Func("ln", Func("abs", expr.right))
                 }
                 // k / x -> k * ln|x|
                 if (expr.left is Constant && expr.right is Variable && expr.right.name == v) {
-                    steps.add("Reciprocal rule: ∫ (${expr.left.toDisplayString()}/$v) d$v = ${expr.left.toDisplayString()}·ln|$v|")
+                    steps.add("\\text{Reciprocal Rule: } \\int \\frac{${expr.left.toLatex()}}{$v}\\,d$v = ${expr.left.toLatex()} \\ln|$v|")
                     return Mul(expr.left, Func("ln", Func("abs", expr.right)))
                 }
                 return null
@@ -255,16 +482,17 @@ object CalculusEngine {
                 if (expr.base is Variable && expr.base.name == v && expr.exp is Constant) {
                     val n = expr.exp.value
                     if (abs(n - (-1.0)) < 1e-12) {
-                        steps.add("∫ $v⁻¹ d$v = ln|$v|")
+                        steps.add("\\text{Power Rule } (n = -1): \\int $v^{-1}\\,d$v = \\ln|$v|")
                         return Func("ln", Func("abs", expr.base))
                     }
                     val nPlus1 = n + 1
-                    steps.add("Power rule: ∫ $v^$n d$v = ($v^$nPlus1) / $nPlus1")
+                    val nPlus1Str = if (abs(nPlus1 - Math.round(nPlus1)) < 1e-9) "${Math.round(nPlus1)}" else "$nPlus1"
+                    steps.add("\\text{Power Rule } \\left(\\int $v^n\\,d$v = \\frac{$v^{n+1}}{n+1}\\right): \\int $v^{${expr.exp.toLatex()}}\\,d$v = \\frac{$v^{$nPlus1Str}}{$nPlus1Str}")
                     return Div(Pow(expr.base, Constant(nPlus1)), Constant(nPlus1))
                 }
                 // e^x dx = e^x
                 if (expr.base is Constant && abs(expr.base.value - Math.E) < 1e-6 && expr.exp is Variable && expr.exp.name == v) {
-                    steps.add("Exponential rule: ∫ e^$v d$v = e^$v")
+                    steps.add("\\text{Exponential Rule: } \\int e^{$v}\\,d$v = e^{$v}")
                     return expr
                 }
                 return null
@@ -273,19 +501,25 @@ object CalculusEngine {
                 if (expr.arg is Variable && expr.arg.name == v) {
                     return when (expr.name.lowercase()) {
                         "sin" -> {
-                            steps.add("Trig rule: ∫ sin($v) d$v = -cos($v)")
+                            steps.add("\\text{Trigonometric Rule: } \\int \\sin($v)\\,d$v = -\\cos($v)")
                             Neg(Func("cos", expr.arg))
                         }
                         "cos" -> {
-                            steps.add("Trig rule: ∫ cos($v) d$v = sin($v)")
+                            steps.add("\\text{Trigonometric Rule: } \\int \\cos($v)\\,d$v = \\sin($v)")
                             Func("sin", expr.arg)
                         }
                         "exp" -> {
-                            steps.add("Exponential rule: ∫ exp($v) d$v = exp($v)")
+                            steps.add("\\text{Exponential Rule: } \\int e^{$v}\\,d$v = e^{$v}")
                             expr
                         }
-                        "sinh" -> Func("cosh", expr.arg)
-                        "cosh" -> Func("sinh", expr.arg)
+                        "sinh" -> {
+                            steps.add("\\text{Hyperbolic Rule: } \\int \\sinh($v)\\,d$v = \\cosh($v)")
+                            Func("cosh", expr.arg)
+                        }
+                        "cosh" -> {
+                            steps.add("\\text{Hyperbolic Rule: } \\int \\cosh($v)\\,d$v = \\sinh($v)")
+                            Func("sinh", expr.arg)
+                        }
                         else -> null
                     }
                 }
@@ -295,7 +529,7 @@ object CalculusEngine {
     }
 
     /**
-     * Compute definite integral: ∫[a, b] f(x) dx
+     * Compute definite integral: ∫[a, b] f(x) dx with full step-by-step mathematical reasoning.
      */
     fun integrateDefinite(
         expressionStr: String,
@@ -306,22 +540,34 @@ object CalculusEngine {
         try {
             val ast = CalculusParser.parse(expressionStr)
             val steps = mutableListOf<String>()
-            steps.add("Definite integral: ∫_{$lower}^{$upper} (${ast.toDisplayString()}) d$variable")
+            val lowerFormatted = formatLimit(lower)
+            val upperFormatted = formatLimit(upper)
+
+            steps.add("\\textbf{Definite Integral: } I = \\int_{$lowerFormatted}^{$upperFormatted} \\left(${ast.toLatex()}\\right)\\,d$variable")
 
             // Try symbolic first
             val dummySteps = mutableListOf<String>()
             val antiderivative = integrateSymbolic(ast, variable, dummySteps)
 
             if (antiderivative != null) {
-                val F_b = antiderivative.eval(mapOf(variable to upper))
-                val F_a = antiderivative.eval(mapOf(variable to lower))
+                val F = antiderivative.simplify()
+                val F_b = F.eval(mapOf(variable to upper))
+                val F_a = F.eval(mapOf(variable to lower))
                 val exactVal = F_b - F_a
 
                 if (!exactVal.isNaN() && !exactVal.isInfinite()) {
-                    steps.add("Found antiderivative: F($variable) = ${antiderivative.simplify().toDisplayString()}")
-                    steps.add("By Fundamental Theorem: F($upper) - F($lower)")
-                    steps.add("F($upper) = ${String.format(java.util.Locale.US, "%.6f", F_b)}, F($lower) = ${String.format(java.util.Locale.US, "%.6f", F_a)}")
-                    steps.add("Result = ${String.format(java.util.Locale.US, "%.6f", exactVal)}")
+                    steps.add("\\textbf{Step 1 - Find Antiderivative: } F($variable) = \\int \\left(${ast.toLatex()}\\right)\\,d$variable = ${F.toLatex()}")
+                    steps.add("\\textbf{Step 2 - Fundamental Theorem of Calculus: } \\int_{a}^{b} f($variable)\\,d$variable = \\left[ F($variable) \\right]_{a}^{b} = F(b) - F(a)")
+
+                    val subB = formatSubstitution(F, variable, upper)
+                    val subA = formatSubstitution(F, variable, lower)
+                    steps.add("\\textbf{Step 3 - Evaluate at Upper Limit } $variable = $upperFormatted:")
+                    steps.add("F($upperFormatted) = $subB = ${String.format(java.util.Locale.US, "%.6f", F_b)}")
+
+                    steps.add("\\textbf{Step 4 - Evaluate at Lower Limit } $variable = $lowerFormatted:")
+                    steps.add("F($lowerFormatted) = $subA = ${String.format(java.util.Locale.US, "%.6f", F_a)}")
+
+                    steps.add("\\textbf{Step 5 - Subtract: } F($upperFormatted) - F($lowerFormatted) = (${String.format(java.util.Locale.US, "%.6f", F_b)}) - (${String.format(java.util.Locale.US, "%.6f", F_a)}) = ${String.format(java.util.Locale.US, "%.6f", exactVal)}")
 
                     val frac = Fraction.fromDouble(exactVal)
                     val exactFormatted = if (frac.denominator.toLong() in 1..1000) {
@@ -329,6 +575,8 @@ object CalculusEngine {
                     } else {
                         String.format(java.util.Locale.US, "%.6f", exactVal).trimEnd('0').trimEnd('.')
                     }
+
+                    steps.add("\\textbf{Final Result: } I = $exactFormatted \\quad (\\approx ${String.format(java.util.Locale.US, "%.6f", exactVal)})")
 
                     return DefiniteIntegralResult(
                         originalExpr = expressionStr,
@@ -347,9 +595,10 @@ object CalculusEngine {
             }
 
             // High precision numerical integration: Adaptive Simpson's 1/3 Rule
-            steps.add("Evaluating numerically via Adaptive Simpson's 1/3 Quadrature rule.")
+            steps.add("\\text{Symbolic antiderivative is non-elementary. Evaluating numerically via Adaptive Simpson's 1/3 Quadrature Rule.}")
+            steps.add("\\textbf{Formula: } S = \\frac{h}{3}\\left[ f(x_0) + 4\\sum_{i\\text{ odd}} f(x_i) + 2\\sum_{i\\text{ even}} f(x_i) + f(x_n) \\right]")
             val numVal = adaptiveSimpson(ast, lower, upper, variable, tolerance = 1e-7, maxDepth = 15)
-            steps.add("Numerical evaluation result = ${String.format(java.util.Locale.US, "%.8f", numVal)}")
+            steps.add("\\textbf{Numerical Quadrature Result: } I \\approx ${String.format(java.util.Locale.US, "%.8f", numVal)}")
 
             return DefiniteIntegralResult(
                 originalExpr = expressionStr,
@@ -433,5 +682,48 @@ object CalculusEngine {
         val s0 = simpson(fa, fb, fc, a, b)
 
         return recursive(a, b, tolerance, fa, fb, fc, s0, 0)
+    }
+
+    /**
+     * Extracts individual terms joined by + or - at the root level.
+     */
+    private fun extractAddSubTerms(expr: Expr): List<Pair<Boolean, Expr>> {
+        val result = mutableListOf<Pair<Boolean, Expr>>()
+        fun collect(e: Expr, isPositive: Boolean) {
+            when (e) {
+                is Add -> {
+                    collect(e.left, isPositive)
+                    collect(e.right, isPositive)
+                }
+                is Sub -> {
+                    collect(e.left, isPositive)
+                    collect(e.right, !isPositive)
+                }
+                is Neg -> {
+                    collect(e.inner, !isPositive)
+                }
+                else -> {
+                    result.add(Pair(isPositive, e))
+                }
+            }
+        }
+        collect(expr, true)
+        return result
+    }
+
+    private fun formatLimit(v: Double): String {
+        return when {
+            abs(v - Math.PI) < 1e-5 -> "\\pi"
+            abs(v - (Math.PI / 2)) < 1e-5 -> "\\frac{\\pi}{2}"
+            abs(v - (2 * Math.PI)) < 1e-5 -> "2\\pi"
+            abs(v - Math.round(v)) < 1e-9 -> Math.round(v).toString()
+            else -> String.format(java.util.Locale.US, "%.4f", v).trimEnd('0').trimEnd('.')
+        }
+    }
+
+    private fun formatSubstitution(expr: Expr, variable: String, point: Double): String {
+        val ptStr = if (abs(point - Math.round(point)) < 1e-9) Math.round(point).toString() else String.format(java.util.Locale.US, "%.4f", point)
+        val originalLatex = expr.toLatex()
+        return originalLatex.replace(variable, "($ptStr)")
     }
 }

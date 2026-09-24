@@ -112,6 +112,13 @@ object UniversalMathParser {
                 when (expr.name.lowercase(Locale.US)) {
                     "sqrt" -> RadicalNode(argNode)
                     "abs" -> AbsNode(argNode)
+                    "asin", "arcsin", "sin^-1", "sin^{-1}" -> FunctionNode("sin", argNode, power = NumberNode("-1"))
+                    "acos", "arccos", "cos^-1", "cos^{-1}" -> FunctionNode("cos", argNode, power = NumberNode("-1"))
+                    "atan", "arctan", "tan^-1", "tan^{-1}" -> FunctionNode("tan", argNode, power = NumberNode("-1"))
+                    "acot", "arccot", "cot^-1", "cot^{-1}" -> FunctionNode("cot", argNode, power = NumberNode("-1"))
+                    "asec", "arcsec", "sec^-1", "sec^{-1}" -> FunctionNode("sec", argNode, power = NumberNode("-1"))
+                    "acsc", "arccsc", "csc^-1", "csc^{-1}" -> FunctionNode("csc", argNode, power = NumberNode("-1"))
+                    "acosec", "arccosec", "cosec^-1", "cosec^{-1}" -> FunctionNode("cosec", argNode, power = NumberNode("-1"))
                     else -> FunctionNode(expr.name, argNode)
                 }
             }
@@ -388,8 +395,30 @@ private class LatexParser(private val text: String) {
             "ge", "geq" -> OperatorNode("≥")
             "ne", "neq" -> OperatorNode("≠")
             "approx" -> OperatorNode("≈")
+            "equiv" -> OperatorNode("≡")
+            "cong" -> OperatorNode("≅")
+            "sim" -> OperatorNode("∼")
+            "propto" -> OperatorNode("∝")
+            "parallel" -> OperatorNode("∥")
+            "perp" -> OperatorNode("⊥")
+            "angle" -> OperatorNode("∠")
+            "therefore" -> OperatorNode("∴")
+            "because" -> OperatorNode("∵")
+            "circ", "degree" -> OperatorNode("°")
             "to", "rightarrow", "longrightarrow" -> OperatorNode("→")
+            "leftarrow", "longleftarrow" -> OperatorNode("←")
+            "leftrightarrow" -> OperatorNode("↔")
             "implies", "Longrightarrow" -> OperatorNode("⟹")
+            "iff", "Longleftrightarrow" -> OperatorNode("⟺")
+            "in" -> OperatorNode("∈")
+            "notin" -> OperatorNode("∉")
+            "subset" -> OperatorNode("⊂")
+            "subseteq" -> OperatorNode("⊆")
+            "cap" -> OperatorNode("∩")
+            "cup" -> OperatorNode("∪")
+            "forall" -> OperatorNode("∀")
+            "exists" -> OperatorNode("∃")
+            "nabla" -> SymbolNode("∇", "nabla", "\\nabla")
             "pi" -> SymbolNode("π", "pi", "\\pi")
             "theta" -> SymbolNode("θ", "theta", "\\theta")
             "alpha" -> SymbolNode("α", "alpha", "\\alpha")
@@ -399,16 +428,59 @@ private class LatexParser(private val text: String) {
             "mu" -> SymbolNode("μ", "mu", "\\mu")
             "sigma" -> SymbolNode("σ", "sigma", "\\sigma")
             "omega" -> SymbolNode("ω", "omega", "\\omega")
+            "rho" -> SymbolNode("ρ", "rho", "\\rho")
+            "tau" -> SymbolNode("τ", "tau", "\\tau")
+            "phi", "varphi" -> SymbolNode("φ", "phi", "\\phi")
+            "psi" -> SymbolNode("ψ", "psi", "\\psi")
+            "eta" -> SymbolNode("η", "eta", "\\eta")
+            "nu" -> SymbolNode("ν", "nu", "\\nu")
+            "xi" -> SymbolNode("ξ", "xi", "\\xi")
+            "zeta" -> SymbolNode("ζ", "zeta", "\\zeta")
+            "kappa" -> SymbolNode("κ", "kappa", "\\kappa")
+            "chi" -> SymbolNode("χ", "chi", "\\chi")
+            "epsilon", "varepsilon" -> SymbolNode("ε", "epsilon", "\\epsilon")
             "Delta" -> SymbolNode("Δ", "delta", "\\Delta")
+            "Gamma" -> SymbolNode("Γ", "Gamma", "\\Gamma")
+            "Lambda" -> SymbolNode("Λ", "Lambda", "\\Lambda")
+            "Sigma" -> SymbolNode("Σ", "Sigma", "\\Sigma")
+            "Omega" -> SymbolNode("Ω", "Omega", "\\Omega")
+            "Phi" -> SymbolNode("Φ", "Phi", "\\Phi")
+            "Psi" -> SymbolNode("Ψ", "Psi", "\\Psi")
+            "Theta" -> SymbolNode("Θ", "Theta", "\\Theta")
             "infty" -> SymbolNode("∞", "infinity", "\\infty")
             "partial" -> SymbolNode("∂", "partial", "\\partial")
             "int" -> parseIntegral()
             "sum" -> parseBigOp(BigOpType.SUM)
             "prod" -> parseBigOp(BigOpType.PRODUCT)
             "lim" -> parseLimit()
-            "vec" -> {
+            "vec", "hat", "bar", "overline" -> {
                 val v = parseRequiredArg()
                 VectorNode(name = v.toPlainText())
+            }
+            "mathbf", "mathrm", "operatorname", "mathit", "boldsymbol", "text" -> {
+                val str = parseRawGroup()
+                if (str.isNotEmpty()) TextNode(str) else parseRequiredArg()
+            }
+            "quad", "qquad" -> OperatorNode("  ")
+            "vert", "Vert" -> OperatorNode("|")
+            "Box", "square" -> TextNode("⬚")
+            "color", "textcolor" -> {
+                parseRawGroup() // consume color hex/name
+                parseItem() ?: NumberNode("")
+            }
+            "phantom" -> {
+                parseRawGroup() // consume content
+                OperatorNode("")
+            }
+            "limits", "nolimits", "displaystyle", "textstyle", "scriptstyle" -> {
+                parseItem() ?: NumberNode("")
+            }
+            "right" -> {
+                skipWhitespace()
+                if (pos < text.length && text[pos] in "()[]{}|.") {
+                    pos++
+                }
+                OperatorNode("")
             }
             "left" -> {
                 skipWhitespace()
@@ -427,8 +499,9 @@ private class LatexParser(private val text: String) {
                 TextNode(str)
             }
             "sin", "cos", "tan", "asin", "acos", "atan", "arcsin", "arccos", "arctan",
-            "sinh", "cosh", "tanh", "ln", "log", "exp", "sec", "csc", "cot" -> {
-                // Check if followed by power (e.g. \sin^2(x)) or base (e.g. \log_2(x))
+            "cot", "sec", "csc", "cosec", "acot", "asec", "acsc", "acosec", "arccot", "arcsec", "arccsc", "arccosec",
+            "sinh", "cosh", "tanh", "coth", "sech", "csch", "ln", "log", "log10", "exp" -> {
+                // Check if followed by power (e.g. \sin^2(x) or \sin^{-1}(x)) or base (e.g. \log_2(x))
                 var power: MathNode? = null
                 var base: MathNode? = null
                 skipWhitespace()
@@ -443,7 +516,17 @@ private class LatexParser(private val text: String) {
                     skipWhitespace()
                 }
                 val arg = parseItem() ?: NumberNode("0")
-                FunctionNode(cmd, arg, power, base)
+                val normCmd = when (cmd.lowercase(Locale.US)) {
+                    "arcsin", "asin" -> { power = NumberNode("-1"); "sin" }
+                    "arccos", "acos" -> { power = NumberNode("-1"); "cos" }
+                    "arctan", "atan" -> { power = NumberNode("-1"); "tan" }
+                    "arccot", "acot" -> { power = NumberNode("-1"); "cot" }
+                    "arcsec", "asec" -> { power = NumberNode("-1"); "sec" }
+                    "arccsc", "acsc" -> { power = NumberNode("-1"); "csc" }
+                    "arccosec", "acosec" -> { power = NumberNode("-1"); "cosec" }
+                    else -> cmd
+                }
+                FunctionNode(normCmd, arg, power, base)
             }
             else -> VariableNode(cmd)
         }
@@ -532,18 +615,39 @@ private class LatexParser(private val text: String) {
     }
 
     private fun parseUntilRight(): MathNode {
-        val rightTag = "\\right"
-        val idx = text.indexOf(rightTag, pos)
-        val content = if (idx != -1) {
-            val s = text.substring(pos, idx)
-            pos = idx + rightTag.length
-            if (pos < text.length) pos++ // skip closing delimiter
-            s
-        } else {
-            val s = text.substring(pos)
-            pos = text.length
-            s
+        var depth = 1
+        val start = pos
+        var endPos = text.length
+
+        var scan = pos
+        while (scan < text.length && depth > 0) {
+            if (text.startsWith("\\left", scan)) {
+                depth++
+                scan += 5
+            } else if (text.startsWith("\\right", scan)) {
+                depth--
+                if (depth == 0) {
+                    endPos = scan
+                    scan += 6 // skip "\\right"
+                    skipWhitespace()
+                    if (scan < text.length && text[scan] in "()[]{}|.") {
+                        scan++
+                    }
+                    pos = scan
+                    break
+                } else {
+                    scan += 6
+                }
+            } else {
+                scan++
+            }
         }
+
+        if (depth > 0) {
+            pos = text.length
+        }
+
+        val content = text.substring(start, endPos)
         return UniversalMathParser.parse(content)
     }
 
@@ -848,6 +952,13 @@ private class GeneralMathParser(private val text: String) {
                 "theta", "θ" -> return SymbolNode("θ", "theta", "\\theta")
                 "alpha", "α" -> return SymbolNode("α", "alpha", "\\alpha")
                 "beta", "β" -> return SymbolNode("β", "beta", "\\beta")
+                "gamma", "γ" -> return if (ident == "Gamma" || ident == "Γ") SymbolNode("Γ", "Gamma", "\\Gamma") else SymbolNode("γ", "gamma", "\\gamma")
+                "delta", "δ" -> return if (ident == "Delta" || ident == "Δ") SymbolNode("Δ", "Delta", "\\Delta") else SymbolNode("δ", "delta", "\\delta")
+                "lambda", "λ" -> return if (ident == "Lambda" || ident == "Λ") SymbolNode("Λ", "Lambda", "\\Lambda") else SymbolNode("λ", "lambda", "\\lambda")
+                "sigma", "σ" -> return if (ident == "Sigma" || ident == "Σ") SymbolNode("Σ", "Sigma", "\\Sigma") else SymbolNode("σ", "sigma", "\\sigma")
+                "omega", "ω" -> return if (ident == "Omega" || ident == "Ω") SymbolNode("Ω", "Omega", "\\Omega") else SymbolNode("ω", "omega", "\\omega")
+                "mu", "μ" -> return SymbolNode("μ", "mu", "\\mu")
+                "phi", "ϕ", "φ" -> return if (ident == "Phi" || ident == "Φ") SymbolNode("Φ", "Phi", "\\Phi") else SymbolNode("φ", "phi", "\\phi")
                 "infinity", "inf", "∞" -> return SymbolNode("∞", "infinity", "\\infty")
                 "sqrt" -> {
                     val arg = parsePrimary()
@@ -861,9 +972,10 @@ private class GeneralMathParser(private val text: String) {
                     val arg = parsePrimary()
                     return AbsNode(arg)
                 }
-                "sin", "cos", "tan", "asin", "acos", "atan",
-                "sinh", "cosh", "tanh", "ln", "log", "exp" -> {
-                    // Check power: sin^2(x)
+                "sin", "cos", "tan", "asin", "acos", "atan", "arcsin", "arccos", "arctan",
+                "cot", "sec", "csc", "cosec", "acot", "asec", "acsc", "acosec", "arccot", "arcsec", "arccsc", "arccosec",
+                "sinh", "cosh", "tanh", "coth", "sech", "csch", "ln", "log", "log10", "exp" -> {
+                    // Check power: sin^2(x) or sin^-1(x)
                     var power: MathNode? = null
                     var base: MathNode? = null
                     skipWhitespace()
@@ -875,7 +987,17 @@ private class GeneralMathParser(private val text: String) {
                         base = parseFactor()
                     }
                     val arg = parsePrimary()
-                    return FunctionNode(ident, arg, power, base)
+                    val normIdent = when (ident.lowercase(Locale.US)) {
+                        "arcsin", "asin" -> { power = NumberNode("-1"); "sin" }
+                        "arccos", "acos" -> { power = NumberNode("-1"); "cos" }
+                        "arctan", "atan" -> { power = NumberNode("-1"); "tan" }
+                        "arccot", "acot" -> { power = NumberNode("-1"); "cot" }
+                        "arcsec", "asec" -> { power = NumberNode("-1"); "sec" }
+                        "arccsc", "acsc" -> { power = NumberNode("-1"); "csc" }
+                        "arccosec", "acosec" -> { power = NumberNode("-1"); "cosec" }
+                        else -> ident
+                    }
+                    return FunctionNode(normIdent, arg, power, base)
                 }
                 else -> {
                     // Check subscript: a1 or x0

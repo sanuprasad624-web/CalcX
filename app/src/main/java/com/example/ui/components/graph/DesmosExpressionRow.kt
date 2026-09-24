@@ -17,34 +17,32 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.BaselineShift
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.math.graph.GraphFunction
+import com.example.ui.components.MathQuillController
+import com.example.ui.components.MathQuillField
+import com.example.ui.components.MathView
 
 @Composable
 fun DesmosExpressionRow(
     index: Int,
     function: GraphFunction,
     isFocused: Boolean,
-    cursorPos: Int,
+    controller: MathQuillController? = null,
     onRowClick: () -> Unit,
     onToggleVisibility: () -> Unit,
     onDelete: () -> Unit,
+    onUpdateLatex: (String) -> Unit,
     onUpdateFunction: (GraphFunction) -> Unit,
+    onEnter: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
-    var showColorMenu by remember { mutableStateOf(false) }
     var showCalculusOptions by remember { mutableStateOf(false) }
 
     val activeBlue = Color(0xFF2563EB)
@@ -63,7 +61,7 @@ fun DesmosExpressionRow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
+                    .heightIn(min = 56.dp)
                     .border(width = 0.5.dp, color = borderColor),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -71,7 +69,7 @@ fun DesmosExpressionRow(
                 Box(
                     modifier = Modifier
                         .width(28.dp)
-                        .fillMaxHeight()
+                        .height(56.dp)
                         .background(if (isFocused) activeBlue else unfocusedStrip),
                     contentAlignment = Alignment.Center
                 ) {
@@ -85,7 +83,7 @@ fun DesmosExpressionRow(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // 2. Circular Colored Badge with Sine Wave icon (matching Screenshot 3)
+                // 2. Circular Colored Badge with Sine Wave icon
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -127,48 +125,27 @@ fun DesmosExpressionRow(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-                // 3. Mathematical Expression Display (Desmos styled format)
+                // 3. Mathematical Expression Input (Live MathQuill MathField)
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
+                        .height(48.dp)
+                        .padding(vertical = 2.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
-                    if (function.expressionText.isEmpty()) {
-                        if (isFocused) {
-                            // Blinking cursor in empty row
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(2.dp)
-                                        .height(22.dp)
-                                        .background(activeBlue)
-                                )
-                            }
-                        } else {
-                            Text(
-                                text = "Type an equation, e.g. x² + y² = 5",
-                                color = Color(0xFF94A3B8),
-                                fontSize = 15.sp,
-                                fontStyle = FontStyle.Italic
-                            )
-                        }
-                    } else {
-                        // Render styled math string with cursor
-                        val formattedMath = formatMathStringWithCursor(
-                            raw = function.expressionText,
-                            isFocused = isFocused,
-                            cursorPos = cursorPos.coerceIn(0, function.expressionText.length)
-                        )
-                        Text(
-                            text = formattedMath,
-                            fontSize = 17.sp,
-                            color = Color(0xFF0F172A),
-                            lineHeight = 22.sp
-                        )
-                    }
+                    MathQuillField(
+                        latex = function.expressionText,
+                        onLatexChange = { newLatex ->
+                            onUpdateLatex(newLatex)
+                        },
+                        isFocused = isFocused,
+                        controller = controller,
+                        onEnter = onEnter,
+                        onFocused = onRowClick,
+                        modifier = Modifier.fillMaxWidth().height(44.dp)
+                    )
                 }
 
                 // 4. Error or Calculus Overlay Menu Indicator
@@ -198,7 +175,7 @@ fun DesmosExpressionRow(
                     }
                 }
 
-                // 5. Delete / Clear '✕' Button (matching Screenshot 1 & 3)
+                // 5. Delete / Clear '✕' Button
                 IconButton(
                     onClick = onDelete,
                     modifier = Modifier.size(36.dp).testTag("delete_row_$index")
@@ -241,7 +218,7 @@ fun DesmosExpressionRow(
                                         .clickable {
                                             onUpdateFunction(function.copy(color = color))
                                         }
-                                )
+                                    )
                             }
                         }
 
@@ -278,74 +255,6 @@ fun DesmosExpressionRow(
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * Transforms raw string like "x^2 + y^2 = 5" into formatted mathematical AnnotatedString
- * with superscripts, italic variable glyphs, and insertion cursor.
- */
-fun formatMathStringWithCursor(
-    raw: String,
-    isFocused: Boolean,
-    cursorPos: Int
-): AnnotatedString {
-    return buildAnnotatedString {
-        var i = 0
-        while (i < raw.length) {
-            if (isFocused && i == cursorPos) {
-                pushStyle(SpanStyle(color = Color(0xFF2563EB), fontWeight = FontWeight.Black))
-                append("|")
-                pop()
-            }
-
-            val ch = raw[i]
-            if (ch == '^') {
-                // Superscript next character or parenthesized group
-                i++
-                if (i < raw.length && raw[i] == '{') {
-                    i++
-                    val start = i
-                    while (i < raw.length && raw[i] != '}') i++
-                    val supText = raw.substring(start, i)
-                    pushStyle(SpanStyle(baselineShift = BaselineShift.Superscript, fontSize = 12.sp, fontWeight = FontWeight.Bold))
-                    append(supText)
-                    pop()
-                    if (i < raw.length && raw[i] == '}') i++
-                } else if (i < raw.length) {
-                    pushStyle(SpanStyle(baselineShift = BaselineShift.Superscript, fontSize = 12.sp, fontWeight = FontWeight.Bold))
-                    append(raw[i])
-                    pop()
-                    i++
-                }
-            } else if (ch == '*' || ch == '·') {
-                append(" · ")
-                i++
-            } else if (ch == '=') {
-                append(" = ")
-                i++
-            } else if (ch == '+') {
-                append(" + ")
-                i++
-            } else if (ch == '-') {
-                append(" − ")
-                i++
-            } else if (ch == 'x' || ch == 'y' || ch == 'a' || ch == 'b' || ch == 't') {
-                pushStyle(SpanStyle(fontStyle = FontStyle.Italic, fontWeight = FontWeight.Medium))
-                append(ch)
-                pop()
-                i++
-            } else {
-                append(ch)
-                i++
-            }
-        }
-
-        if (isFocused && cursorPos >= raw.length) {
-            pushStyle(SpanStyle(color = Color(0xFF2563EB), fontWeight = FontWeight.Black))
-            append("|")
-            pop()
         }
     }
 }

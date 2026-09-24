@@ -20,7 +20,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.HistoryEntity
+import com.example.ui.components.MathView
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -124,8 +126,28 @@ fun HistoryScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text(item.expression, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
-                                    Text("= ${item.result}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                    MathView(
+                                        latex = item.expression,
+                                        fontSize = 16.sp,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            "= ",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        MathView(
+                                            latex = item.result,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text("${item.category} • ${item.angleMode} • $dateStr", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
 
