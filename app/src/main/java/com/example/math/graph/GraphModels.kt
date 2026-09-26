@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.Color
 import com.example.math.calculus.CalculusParser
 import com.example.math.calculus.Expr
 import com.example.math.editor.MathInputModel
+import kotlin.math.abs
 
 data class GraphFunction(
     val id: String,
@@ -24,7 +25,7 @@ data class GraphFunction(
     val error: String? = null
 ) {
     companion object {
-        // Desmos canonical color palette: Red, Blue, Green, Purple, Orange, Black
+        // Desmos canonical color palette: Red, Blue, Green, Purple, Orange, Black, Teal, Pink
         val PALETTE = listOf(
             Color(0xFFC74440), // Desmos Red
             Color(0xFF2D70B3), // Desmos Blue
@@ -125,16 +126,34 @@ data class GraphFunction(
     }
 }
 
+/**
+ * Mathematical 2D Viewport with 1:1 Aspect Ratio guarantee and precise focal zoom.
+ */
 data class GraphViewport(
     val minX: Double = -10.0,
     val maxX: Double = 10.0,
     val minY: Double = -10.0,
     val maxY: Double = 10.0
 ) {
-    val rangeX: Double get() = (maxX - minX).coerceAtLeast(MIN_RANGE)
-    val rangeY: Double get() = (maxY - minY).coerceAtLeast(MIN_RANGE)
+    val rangeX: Double get() = (maxX - minX).coerceIn(MIN_RANGE, MAX_RANGE)
+    val rangeY: Double get() = (maxY - minY).coerceIn(MIN_RANGE, MAX_RANGE)
     val centerX: Double get() = (minX + maxX) / 2.0
     val centerY: Double get() = (minY + maxY) / 2.0
+
+    /**
+     * Enforces equal 1:1 aspect ratio based on canvas dimensions so 1 math unit on X
+     * corresponds to the exact same screen pixel length as 1 unit on Y.
+     */
+    fun withAspectRatio(screenWidth: Float, screenHeight: Float): GraphViewport {
+        if (screenWidth <= 0f || screenHeight <= 0f) return this
+        val targetRangeY = (rangeX / screenWidth.toDouble()) * screenHeight.toDouble()
+        val cy = centerY
+        val halfH = (targetRangeY / 2.0).coerceIn(MIN_RANGE / 2.0, MAX_RANGE / 2.0)
+        return copy(
+            minY = (cy - halfH).coerceIn(-MAX_COORD, MAX_COORD),
+            maxY = (cy + halfH).coerceIn(-MAX_COORD, MAX_COORD)
+        )
+    }
 
     /**
      * Converts mathematical coordinates (worldX, worldY) to screen pixel coordinates.
@@ -146,7 +165,7 @@ data class GraphViewport(
 
     fun toScreenY(worldY: Double, screenHeight: Float): Float {
         if (rangeY <= 0.0 || screenHeight <= 0f) return 0f
-        // World Y increases upwards, Screen Y increases downwards!
+        // World Y increases upwards, Screen Y increases downwards
         return (((maxY - worldY) / rangeY) * screenHeight).toFloat()
     }
 
@@ -160,15 +179,31 @@ data class GraphViewport(
 
     fun toWorldY(screenY: Float, screenHeight: Float): Double {
         if (screenHeight <= 0f) return centerY
-        // Screen top (0) is maxY, screen bottom (height) is minY
         return maxY - (screenY.toDouble() / screenHeight.toDouble()) * rangeY
     }
 
     /**
-     * Pan the viewport by screen pixel deltas (panPixelsX, panPixelsY).
-     * Moving finger RIGHT (panPixelsX > 0) should reveal content on the left, so minX/maxX decrease.
-     * Moving finger DOWN (panPixelsY > 0) should reveal content above, so minY/maxY increase.
+     * Delta-based panning from initial gesture anchor (prevents accumulated drift).
      */
+    fun panFromStart(
+        startViewport: GraphViewport,
+        totalPanPixelsX: Float,
+        totalPanPixelsY: Float,
+        screenWidth: Float,
+        screenHeight: Float
+    ): GraphViewport {
+        if (screenWidth <= 0f || screenHeight <= 0f) return this
+        val worldDeltaX = (totalPanPixelsX.toDouble() / screenWidth.toDouble()) * startViewport.rangeX
+        val worldDeltaY = -(totalPanPixelsY.toDouble() / screenHeight.toDouble()) * startViewport.rangeY
+
+        val newMinX = (startViewport.minX - worldDeltaX).coerceIn(-MAX_COORD, MAX_COORD)
+        val newMaxX = (startViewport.maxX - worldDeltaX).coerceIn(-MAX_COORD, MAX_COORD)
+        val newMinY = (startViewport.minY - worldDeltaY).coerceIn(-MAX_COORD, MAX_COORD)
+        val newMaxY = (startViewport.maxY - worldDeltaY).coerceIn(-MAX_COORD, MAX_COORD)
+
+        return copy(minX = newMinX, maxX = newMaxX, minY = newMinY, maxY = newMaxY)
+    }
+
     fun panByPixels(panPixelsX: Float, panPixelsY: Float, screenWidth: Float, screenHeight: Float): GraphViewport {
         if (screenWidth <= 0f || screenHeight <= 0f) return this
         val worldDeltaX = (panPixelsX.toDouble() / screenWidth.toDouble()) * rangeX
@@ -183,9 +218,7 @@ data class GraphViewport(
     }
 
     /**
-     * Zoom around a screen focal point (focalScreenX, focalScreenY) by [zoomFactor].
-     * If zoomFactor > 1.0, we zoom IN (range shrinks).
-     * If zoomFactor < 1.0, we zoom OUT (range expands).
+     * Focal-point zoom (keeps the point under the gesture spatially fixed on screen).
      */
     fun zoomAroundScreenPoint(
         focalScreenX: Float,
@@ -222,15 +255,6 @@ data class GraphViewport(
         )
     }
 
-    fun pan(dxMath: Double, dyMath: Double): GraphViewport {
-        return copy(
-            minX = (minX - dxMath).coerceIn(-MAX_COORD, MAX_COORD),
-            maxX = (maxX - dxMath).coerceIn(-MAX_COORD, MAX_COORD),
-            minY = (minY - dyMath).coerceIn(-MAX_COORD, MAX_COORD),
-            maxY = (maxY - dyMath).coerceIn(-MAX_COORD, MAX_COORD)
-        )
-    }
-
     fun zoom(factor: Double): GraphViewport {
         val newRangeX = (rangeX * factor).coerceIn(MIN_RANGE, MAX_RANGE)
         val newRangeY = (rangeY * factor).coerceIn(MIN_RANGE, MAX_RANGE)
@@ -249,9 +273,9 @@ data class GraphViewport(
     fun reset(): GraphViewport = GraphViewport(-10.0, 10.0, -10.0, 10.0)
 
     companion object {
-        const val MIN_RANGE = 1e-7
-        const val MAX_RANGE = 1e8
-        const val MAX_COORD = 1e9
+        const val MIN_RANGE = 1e-6
+        const val MAX_RANGE = 1e7
+        const val MAX_COORD = 1e8
     }
 }
 
@@ -265,5 +289,5 @@ data class GraphSlider(
 
 data class TableRow(
     val x: Double,
-    val values: Map<String, Double?> // funcId -> evaluated y
+    val values: Map<String, Double?>
 )

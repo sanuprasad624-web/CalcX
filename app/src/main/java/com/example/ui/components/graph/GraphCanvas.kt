@@ -6,9 +6,6 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.calculateCentroid
-import androidx.compose.foundation.gestures.calculatePan
-import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -27,9 +24,11 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.math.calculus.Expr
 import com.example.math.graph.GraphFunction
 import com.example.math.graph.GraphPathEngine
 import com.example.math.graph.GraphViewport
@@ -49,14 +48,14 @@ fun GraphCanvas(
     onViewportChange: (GraphViewport) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
+
     // Desmos styling colors
     val canvasBg = Color(0xFFFFFFFF)
     val majorGridColor = Color(0xFFE2E8F0)
     val minorGridColor = Color(0xFFF1F5F9)
     val axisColor = Color(0xFF334155)
 
-    // Interaction state: switches to INTERACTIVE mode during gestures (lower sampling density for 60fps),
-    // and settles to PRECISION mode (fine refinement) 150ms after gesture release.
     var isInteracting by remember { mutableStateOf(false) }
 
     // Trace / Inspector tooltip state
@@ -65,16 +64,16 @@ fun GraphCanvas(
     var traceCoords by remember { mutableStateOf<Pair<Double, Double>?>(null) }
 
     // Reusable text paints for axis numbers
-    val axisTextPaint = remember {
+    val axisTextPaint = remember(density) {
         Paint().apply {
             color = android.graphics.Color.rgb(0x33, 0x41, 0x55)
-            textSize = 28f // ~11sp in px
+            textSize = with(density) { 11.sp.toPx() }
             isAntiAlias = true
             typeface = Typeface.DEFAULT
         }
     }
 
-    // Points of Interest cache (evaluated when settled or expression changes, not on every touch micro-delta)
+    // Points of Interest cache (evaluated when settled or expression changes)
     var pointsOfInterest by remember { mutableStateOf<List<Pair<GraphFunction, List<PointOfInterest>>>>(emptyList()) }
 
     LaunchedEffect(functions, viewport, parameters, isInteracting) {
@@ -82,14 +81,13 @@ fun GraphCanvas(
             val result = mutableListOf<Pair<GraphFunction, List<PointOfInterest>>>()
             for (fn in functions) {
                 if (!fn.isVisible || fn.parsedExpr == null) continue
-                val pois = ImplicitPlotter.findPointsOfInterest(fn.parsedExpr, parameters, viewport)
+                val pois = findRootsAndIntercepts(fn.parsedExpr, parameters, viewport)
                 result.add(Pair(fn, pois))
             }
             pointsOfInterest = result
         }
     }
 
-    // Timer to reset isInteracting after touches finish
     var interactionResetTrigger by remember { mutableIntStateOf(0) }
     LaunchedEffect(interactionResetTrigger) {
         if (isInteracting) {
@@ -98,7 +96,6 @@ fun GraphCanvas(
         }
     }
 
-    // Keep latest references for pointer gestures
     val currentViewportState by rememberUpdatedState(viewport)
     val onViewportChangeState by rememberUpdatedState(onViewportChange)
 
@@ -107,14 +104,15 @@ fun GraphCanvas(
             modifier = Modifier
                 .fillMaxSize()
                 .testTag("graph_canvas")
-                // Professional transition-safe 2D pan and focal-point pinch zoom gesture detector
+                // Start-anchored 1:1 pan and focal-point pinch zoom
                 .pointerInput(Unit) {
                     awaitEachGesture {
                         awaitFirstDown(requireUnconsumed = false)
-                        var currentVp = currentViewportState
+                        val startViewport = currentViewportState
+                        var startCentroid: Offset? = null
                         var lastActivePointerIds = emptySet<androidx.compose.ui.input.pointer.PointerId>()
-                        var previousCentroid: Offset? = null
                         var previousSpan: Float? = null
+                        var totalPan = Offset.Zero
 
                         isInteracting = true
                         activeTooltip = null
@@ -135,7 +133,6 @@ fun GraphCanvas(
                             val screenHeight = size.height.toFloat()
 
                             if (screenWidth > 0f && screenHeight > 0f) {
-                                // Compute current centroid of all active touches
                                 val currentCentroid = if (pointerCount == 1) {
                                     pressedChanges[0].position
                                 } else {
@@ -148,7 +145,6 @@ fun GraphCanvas(
                                     Offset(sumX / pointerCount, sumY / pointerCount)
                                 }
 
-                                // Compute current span (distance between touches for pinch zoom)
                                 val currentSpan = if (pointerCount >= 2) {
                                     if (pointerCount == 2) {
                                         (pressedChanges[0].position - pressedChanges[1].position).getDistance()
@@ -159,26 +155,21 @@ fun GraphCanvas(
                                         }
                                         ((sumDist / pointerCount) * 2.0).toFloat()
                                     }
-                                } else {
-                                    null
-                                }
+                                } else null
 
                                 val pointersChanged = currentPointerIds != lastActivePointerIds
 
-                                if (pointersChanged || previousCentroid == null) {
-                                    // TRANSITION RE-ANCHOR:
-                                    // When a finger touches down or lifts up (e.g. 1 -> 2 fingers or 2 -> 1 finger),
-                                    // NEVER calculate delta on this frame! Re-anchor centroid and span seamlessly.
-                                    previousCentroid = currentCentroid
+                                if (pointersChanged || startCentroid == null) {
+                                    startCentroid = currentCentroid
+                                    totalPan = Offset.Zero
                                     previousSpan = currentSpan
                                     lastActivePointerIds = currentPointerIds
                                 } else {
-                                    // STEADY STATE GESTURE:
-                                    val prevCentroid = previousCentroid!!
-                                    val panDelta = currentCentroid - prevCentroid
-                                    var newVp = currentVp
+                                    val deltaX = currentCentroid.x - startCentroid.x
+                                    val deltaY = currentCentroid.y - startCentroid.y
+                                    var newVp = currentViewportState
 
-                                    // 1. Pinch Zoom around actual gesture focal point (currentCentroid)
+                                    // 1. Pinch zoom around focal point
                                     val prevSpan = previousSpan
                                     if (currentSpan != null && prevSpan != null && prevSpan > 8f && currentSpan > 8f) {
                                         val zoomFactor = (currentSpan / prevSpan).toDouble()
@@ -193,27 +184,23 @@ fun GraphCanvas(
                                         }
                                     }
 
-                                    // 2. Pan by centroid movement
-                                    if (panDelta.x != 0f || panDelta.y != 0f) {
-                                        newVp = newVp.panByPixels(
-                                            panPixelsX = panDelta.x,
-                                            panPixelsY = panDelta.y,
-                                            screenWidth = screenWidth,
-                                            screenHeight = screenHeight
-                                        )
-                                    }
+                                    // 2. 1:1 Pan from start anchor
+                                    newVp = newVp.panByPixels(
+                                        panPixelsX = deltaX - totalPan.x,
+                                        panPixelsY = deltaY - totalPan.y,
+                                        screenWidth = screenWidth,
+                                        screenHeight = screenHeight
+                                    )
+                                    totalPan = Offset(deltaX, deltaY)
 
-                                    if (newVp != currentVp) {
-                                        currentVp = newVp
+                                    if (newVp != currentViewportState) {
                                         onViewportChangeState(newVp)
                                     }
 
-                                    previousCentroid = currentCentroid
                                     previousSpan = currentSpan
                                 }
                             }
 
-                            // Consume position changes so parent lists/scrollables do not steal touch events
                             event.changes.forEach {
                                 if (it.positionChange() != Offset.Zero) {
                                     it.consume()
@@ -224,7 +211,7 @@ fun GraphCanvas(
                         interactionResetTrigger++
                     }
                 }
-                // Tap to inspect nearest Point of Interest or show coordinate readout
+                // Tap & trace inspector
                 .pointerInput(functions, viewport, parameters) {
                     detectTapGestures(
                         onTap = { offset ->
@@ -233,7 +220,7 @@ fun GraphCanvas(
                             val mathX = viewport.toWorldX(offset.x, screenWidth)
                             val mathY = viewport.toWorldY(offset.y, screenHeight)
 
-                            // Search cached POIs first
+                            // 1. Check points of interest
                             var foundPoi: PointOfInterest? = null
                             for ((_, pois) in pointsOfInterest) {
                                 for (poi in pois) {
@@ -254,7 +241,7 @@ fun GraphCanvas(
                                 traceCrosshair = Offset(sx, sy)
                                 traceCoords = Pair(foundPoi.x, foundPoi.y)
                             } else {
-                                // Check if tapped near an explicit function curve to trace
+                                // 2. Check nearest curve
                                 var nearestDist = Double.MAX_VALUE
                                 var bestCoord: Pair<Double, Double>? = null
 
@@ -292,7 +279,7 @@ fun GraphCanvas(
             val height = size.height
             if (width <= 0f || height <= 0f) return@Canvas
 
-            // 1. Draw Desmos Grid & Numbers on Axes
+            // 1. Draw Desmos Grid & Nice Numbers on Axes
             if (showGrid) {
                 drawDesmosGridAndLabels(
                     viewport = viewport,
@@ -304,12 +291,11 @@ fun GraphCanvas(
                 )
             }
 
-            // 2. Draw Main Axes (x = 0, y = 0)
+            // 2. Draw Main Coordinate Axes (x = 0, y = 0)
             if (showAxes) {
                 val originX = viewport.toScreenX(0.0, width)
                 val originY = viewport.toScreenY(0.0, height)
 
-                // Y-axis (x = 0)
                 if (originX in -2f..width + 2f) {
                     drawLine(
                         color = axisColor,
@@ -319,7 +305,6 @@ fun GraphCanvas(
                     )
                 }
 
-                // X-axis (y = 0)
                 if (originY in -2f..height + 2f) {
                     drawLine(
                         color = axisColor,
@@ -338,7 +323,7 @@ fun GraphCanvas(
                 val expr = fn.parsedExpr
 
                 if (fn.isImplicit) {
-                    // IMPLICIT CURVE (e.g. x² + y² = 5 circle / conics) via Marching Squares
+                    // Implicit curves (e.g. circles, ellipses, hyperbolas, general conics)
                     val segments = ImplicitPlotter.plotImplicit(
                         expr = expr,
                         parameters = parameters,
@@ -356,13 +341,13 @@ fun GraphCanvas(
                         )
                     }
                 } else {
-                    // EXPLICIT FUNCTION y = f(x)
-                    // A. Integral Area Shading
+                    // Explicit functions y = f(x)
+                    // A. Shaded Definite Integral Region & Live Area Display
                     if (fn.showIntegralArea) {
                         drawIntegralShading(fn, vars, viewport, width, height)
                     }
 
-                    // B. Main Function Curve with adaptive sampling & discontinuity detection
+                    // B. Main Function Curve (high-density adaptive sampling + pen-up asymptote break)
                     val curvePath = GraphPathEngine.buildFunctionPath(
                         expr = expr,
                         parameters = vars,
@@ -407,7 +392,7 @@ fun GraphCanvas(
                 }
             }
 
-            // 4. Draw Points of Interest (roots & intercepts)
+            // 4. Draw Points of Interest (Roots & Intercepts)
             if (!isInteracting) {
                 for ((_, pois) in pointsOfInterest) {
                     for (poi in pois) {
@@ -421,7 +406,7 @@ fun GraphCanvas(
                 }
             }
 
-            // 5. Draw Active Trace Crosshair if inspecting
+            // 5. Draw Active Trace Crosshair & Coordinate Indicator
             traceCrosshair?.let { ch ->
                 drawLine(
                     color = Color(0xFF64748B).copy(alpha = 0.5f),
@@ -442,7 +427,7 @@ fun GraphCanvas(
             }
         }
 
-        // Active point tooltip (e.g. "(2.236, 0)")
+        // Active point tooltip (repositioned safely inside bounds)
         activeTooltip?.let { (poi, screenOffset) ->
             Surface(
                 modifier = Modifier
@@ -466,8 +451,7 @@ fun GraphCanvas(
 }
 
 /**
- * Draws the Desmos-style square grid lines and labels numbers on the axes.
- * Only renders visible lines; dynamically adjusts steps according to zoom.
+ * Draws the Desmos-style square grid lines and labels numbers on the axes with "nice number" step scaling.
  */
 private fun DrawScope.drawDesmosGridAndLabels(
     viewport: GraphViewport,
@@ -483,7 +467,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
     val originX = viewport.toScreenX(0.0, width)
     val originY = viewport.toScreenY(0.0, height)
 
-    // 1. Draw Minor Vertical Grid Lines (X)
+    // Minor Vertical Grid Lines (X)
     val startMinorX = floor(viewport.minX / minorStep) * minorStep
     var curMinorX = startMinorX
     var minorXCount = 0
@@ -501,7 +485,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         minorXCount++
     }
 
-    // 2. Draw Minor Horizontal Grid Lines (Y)
+    // Minor Horizontal Grid Lines (Y)
     val startMinorY = floor(viewport.minY / minorStep) * minorStep
     var curMinorY = startMinorY
     var minorYCount = 0
@@ -519,7 +503,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         minorYCount++
     }
 
-    // 3. Draw Major Grid Lines
+    // Major Vertical Grid Lines
     val startMajorX = floor(viewport.minX / majorStep) * majorStep
     var curMajorX = startMajorX
     var majorXCount = 0
@@ -537,6 +521,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         majorXCount++
     }
 
+    // Major Horizontal Grid Lines
     val startMajorY = floor(viewport.minY / majorStep) * majorStep
     var curMajorY = startMajorY
     var majorYCount = 0
@@ -554,7 +539,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         majorYCount++
     }
 
-    // 4. DRAW NUMBERS ON AXES (Dynamic with zoom)
+    // Numbers on X and Y axes
     val labelYForXAxis = when {
         originY in 24f..(height - 30f) -> originY + 16.dp.toPx()
         originY < 24f -> 20.dp.toPx()
@@ -567,7 +552,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         else -> width - 8.dp.toPx()
     }
 
-    // Draw X-axis numbers
+    // X-axis numbers
     textPaint.textAlign = Paint.Align.CENTER
     curMajorX = startMajorX
     var numXCount = 0
@@ -583,7 +568,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         numXCount++
     }
 
-    // Draw Y-axis numbers
+    // Y-axis numbers
     textPaint.textAlign = Paint.Align.RIGHT
     curMajorY = startMajorY
     var numYCount = 0
@@ -599,7 +584,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
         numYCount++
     }
 
-    // Draw origin "0"
+    // Origin "0" (avoid duplicate zeros)
     if (originX in 20f..(width - 20f) && originY in 20f..(height - 20f)) {
         textPaint.textAlign = Paint.Align.RIGHT
         drawContext.canvas.nativeCanvas.drawText("0", originX - 6.dp.toPx(), originY + 15.dp.toPx(), textPaint)
@@ -607,8 +592,7 @@ private fun DrawScope.drawDesmosGridAndLabels(
 }
 
 /**
- * Calculates optimal major step size for grid numbers based on visible range.
- * Dynamically scales with "nice numbers": 1, 2, 5 * 10^k.
+ * Nice number algorithm: rounds step to 1, 2, or 5 * 10^k.
  */
 private fun calculateNiceStep(range: Double): Double {
     val safeRange = if (range.isNaN() || range.isInfinite() || range <= 0.0) 20.0 else range
@@ -624,9 +608,6 @@ private fun calculateNiceStep(range: Double): Double {
     return (niceFraction * 10.0.pow(exponent)).coerceIn(1e-6, 1e8)
 }
 
-/**
- * Formats axis numbers cleanly, avoiding floating-point noise.
- */
 private fun formatAxisNumber(value: Double, step: Double): String {
     if (abs(value) < 1e-10) return "0"
     return if (step >= 1.0 && abs(value - round(value)) < 1e-5) {
@@ -683,7 +664,7 @@ private fun DrawScope.drawIntegralShading(
 }
 
 private fun DrawScope.drawTangentLine(
-    expr: com.example.math.calculus.Expr,
+    expr: Expr,
     vars: MutableMap<String, Double>,
     tangentX: Double,
     viewport: GraphViewport,
@@ -717,4 +698,63 @@ private fun DrawScope.drawTangentLine(
             center = Offset(viewport.toScreenX(tangentX, width), viewport.toScreenY(y0, height))
         )
     } catch (_: Exception) {}
+}
+
+/**
+ * Live root-finding and intercept detection using bisection.
+ */
+private fun findRootsAndIntercepts(
+    expr: Expr,
+    parameters: Map<String, Double>,
+    viewport: GraphViewport
+): List<PointOfInterest> {
+    val pois = mutableListOf<PointOfInterest>()
+    val vars = parameters.toMutableMap()
+
+    // 1. Y-intercept (x = 0)
+    if (0.0 in viewport.minX..viewport.maxX) {
+        vars["x"] = 0.0
+        try {
+            val y0 = expr.eval(vars)
+            if (!y0.isNaN() && !y0.isInfinite() && y0 in viewport.minY..viewport.maxY) {
+                pois.add(PointOfInterest(0.0, y0, "(0, ${formatCoord(y0)})"))
+            }
+        } catch (_: Exception) {}
+    }
+
+    // 2. X-intercepts (Roots where f(x) = 0) via bisection
+    val steps = 80
+    val dx = viewport.rangeX / steps
+    var prevX = viewport.minX
+    vars["x"] = prevX
+    var prevY = try { expr.eval(vars) } catch (_: Exception) { Double.NaN }
+
+    for (i in 1..steps) {
+        val currX = viewport.minX + i * dx
+        vars["x"] = currX
+        val currY = try { expr.eval(vars) } catch (_: Exception) { Double.NaN }
+
+        if (!prevY.isNaN() && !currY.isNaN() && (prevY * currY <= 0) && abs(currY - prevY) < viewport.rangeY * 0.8) {
+            // Bisect to refine root
+            var low = prevX
+            var high = currX
+            for (iter in 0..12) {
+                val mid = (low + high) * 0.5
+                vars["x"] = mid
+                val midY = try { expr.eval(vars) } catch (_: Exception) { 0.0 }
+                if (midY * prevY <= 0) {
+                    high = mid
+                } else {
+                    low = mid
+                }
+            }
+            val rootX = (low + high) * 0.5
+            pois.add(PointOfInterest(rootX, 0.0, "(${formatCoord(rootX)}, 0)"))
+        }
+
+        prevX = currX
+        prevY = currY
+    }
+
+    return pois
 }

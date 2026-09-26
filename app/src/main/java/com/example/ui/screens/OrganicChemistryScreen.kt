@@ -21,9 +21,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.engine.*
 import com.example.ui.components.MathView
+import com.example.ui.components.RDKitStructureView
 
 enum class OrganicToolTab(val label: String) {
     REACTIONS("Reactions & Predictor"),
+    STRUCTURES("2D Molecules (RDKit)"),
     MECHANISMS("Mechanisms"),
     GOC("GOC & Stability"),
     ISOMERISM("Isomerism"),
@@ -95,6 +97,7 @@ fun OrganicChemistryContent(
         ) {
             when (selectedTab) {
                 OrganicToolTab.REACTIONS -> ReactionPredictorView(onSaveToNotebook)
+                OrganicToolTab.STRUCTURES -> RdkitMoleculeViewerSection(onSaveToNotebook)
                 OrganicToolTab.MECHANISMS -> MechanismsView(onSaveToNotebook)
                 OrganicToolTab.GOC -> GocView(onSaveToNotebook)
                 OrganicToolTab.ISOMERISM -> IsomerismView(onSaveToNotebook)
@@ -774,3 +777,197 @@ private fun OrganicCalculationsView(onSaveToNotebook: (String, String, String) -
         }
     }
 }
+
+@Composable
+private fun RdkitMoleculeViewerSection(onSaveToNotebook: (String, String, String) -> Unit) {
+    var smilesInput by remember { mutableStateOf("c1ccccc1") }
+    var selectedPresetName by remember { mutableStateOf("Benzene") }
+    var isReactionMode by remember { mutableStateOf(false) }
+
+    val moleculePresets = listOf(
+        "Benzene" to "c1ccccc1",
+        "Aspirin" to "CC(=O)Oc1ccccc1C(=O)O",
+        "Ethanol" to "CCO",
+        "Acetone" to "CC(=O)C",
+        "Caffeine" to "CN1C=NC2=C1C(=O)N(C(=O)N2C)C",
+        "Toluene" to "Cc1ccccc1",
+        "Phenol" to "Oc1ccccc1",
+        "Nitrobenzene" to "c1ccccc1[N+](=O)[O-]",
+        "Aniline" to "Nc1ccccc1",
+        "Glucose" to "OC[C@@H]1O[C@H](O)[C@H](O)[C@@H](O)[C@@H]1O"
+    )
+
+    val reactionPresets = listOf(
+        "Esterification" to "CC(=O)O.OCC>>CC(=O)OCC.O",
+        "Nitration of Benzene" to "c1ccccc1.[N+](=O)[O-]>>c1ccccc1[N+](=O)[O-]",
+        "Aldol Addition" to "CC=O.CC=O>>CC(O)CC=O"
+    )
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize().testTag("rdkit_molecule_viewer_section"),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item {
+            Text(
+                "2D Molecule & Reaction Diagram Engine (RDKit WASM)",
+                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                "High-precision chemical structure and reaction scheme rendering powered 100% offline by RDKit WebAssembly.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        // Mode switch: Single Molecule vs Chemical Reaction
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = !isReactionMode,
+                    onClick = {
+                        isReactionMode = false
+                        smilesInput = "c1ccccc1"
+                        selectedPresetName = "Benzene"
+                    },
+                    label = { Text("Molecule (SMILES)") },
+                    modifier = Modifier.weight(1f)
+                )
+                FilterChip(
+                    selected = isReactionMode,
+                    onClick = {
+                        isReactionMode = true
+                        smilesInput = "CC(=O)O.OCC>>CC(=O)OCC.O"
+                        selectedPresetName = "Esterification"
+                    },
+                    label = { Text("Reaction (A + B → C)") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+
+        // Quick Preset Chips
+        item {
+            Text("Presets (JEE Syllabus):", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(4.dp))
+            androidx.compose.foundation.lazy.LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (!isReactionMode) {
+                    items(moleculePresets.size) { i ->
+                        val (name, s) = moleculePresets[i]
+                        SuggestionChip(
+                            onClick = {
+                                smilesInput = s
+                                selectedPresetName = name
+                            },
+                            label = { Text(name, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                } else {
+                    items(reactionPresets.size) { i ->
+                        val (name, s) = reactionPresets[i]
+                        SuggestionChip(
+                            onClick = {
+                                smilesInput = s
+                                selectedPresetName = name
+                            },
+                            label = { Text(name, style = MaterialTheme.typography.labelSmall) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // SMILES Input Field
+        item {
+            OutlinedTextField(
+                value = smilesInput,
+                onValueChange = { smilesInput = it },
+                label = { Text(if (isReactionMode) "Reaction SMILES (reactants>>products)" else "Molecular SMILES") },
+                placeholder = { Text(if (isReactionMode) "e.g. CC(=O)O.OCC>>CC(=O)OCC.O" else "e.g. c1ccccc1, CCO, CC(=O)O") },
+                modifier = Modifier.fillMaxWidth().testTag("smiles_text_field"),
+                shape = RoundedCornerShape(12.dp),
+                trailingIcon = {
+                    if (smilesInput.isNotEmpty()) {
+                        IconButton(onClick = { smilesInput = "" }) {
+                            Icon(Icons.Default.Clear, contentDescription = "Clear")
+                        }
+                    }
+                }
+            )
+        }
+
+        // Primary 2D RDKit Structure Display Card
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (isReactionMode) "Reaction Scheme" else selectedPresetName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        FilledTonalButton(
+                            onClick = {
+                                onSaveToNotebook(
+                                    selectedPresetName,
+                                    "SMILES: $smilesInput",
+                                    if (isReactionMode) "Reaction Scheme" else "2D Chemical Structure"
+                                )
+                            },
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.BookmarkAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Save Note", fontSize = 12.sp)
+                        }
+                    }
+
+                    // 2D Molecular Canvas (RDKit WebAssembly)
+                    RDKitStructureView(
+                        smiles = smilesInput,
+                        isReaction = isReactionMode,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                    )
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("SMILES String: $smilesInput", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                            Text(
+                                "Generated with true 2D stereochemical projection, bond angles, heteroatom labeling, and aromatic ring detection.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+

@@ -13,7 +13,8 @@ data class OrganicReaction(
     val stereochemistry: String,
     val reactionEquationLatex: String,
     val steps: List<String>,
-    val jeeNotes: String
+    val jeeNotes: String,
+    val reactionSmiles: String = ""
 )
 
 data class MechanismDetail(
@@ -26,7 +27,8 @@ data class MechanismDetail(
     val stereochemistry: String,
     val solventEffect: String,
     val steps: List<String>,
-    val jeeKeyPoints: List<String>
+    val jeeKeyPoints: List<String>,
+    val reactionSmiles: String = ""
 )
 
 data class GocConcept(
@@ -35,7 +37,8 @@ data class GocConcept(
     val summary: String,
     val orderSeriesLatex: String,
     val rules: List<String>,
-    val jeeExceptions: List<String>
+    val jeeExceptions: List<String>,
+    val smiles: String = ""
 )
 
 data class IsomerismConcept(
@@ -44,7 +47,8 @@ data class IsomerismConcept(
     val definition: String,
     val formulaLatex: String,
     val conditions: List<String>,
-    val examples: List<String>
+    val examples: List<String>,
+    val smiles: String = ""
 )
 
 data class NamedOrganicReaction(
@@ -54,7 +58,8 @@ data class NamedOrganicReaction(
     val product: String,
     val equationLatex: String,
     val keyIntermediates: String,
-    val importantNotes: String
+    val importantNotes: String,
+    val reactionSmiles: String = ""
 )
 
 data class FunctionalGroupTest(

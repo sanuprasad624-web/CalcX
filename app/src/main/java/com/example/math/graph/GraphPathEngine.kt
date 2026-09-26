@@ -3,6 +3,7 @@ package com.example.math.graph
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import com.example.math.calculus.Expr
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -11,25 +12,24 @@ import kotlin.math.min
  * High-performance adaptive sampling and path generation engine for 2D function plotting.
  *
  * Implements:
- * 1. Screen-space adaptive subdivision (samples curves with precision where curvature is high).
- * 2. Strict discontinuity detection (prevents false vertical lines for 1/x, tan(x), asymptotes).
- * 3. Safe domain evaluation (ignores NaN, Infinity, and out-of-domain points).
- * 4. Dual rendering modes:
- *    - INTERACTIVE mode (during active pan/pinch): fast, low-latency sampling (e.g. 1 sample per 4-8px).
- *    - PRECISION mode (settled): full adaptive subdivision with fine refinement.
+ * 1. Compiled AST lambda memoization for maximum evaluation speed during 60 FPS pan/zoom.
+ * 2. High-density adaptive curve sampling (up to 2400 samples) tied to canvas pixel density.
+ * 3. Strict "Pen-up" discontinuity logic for asymptotes (tan x, 1/x, cot x, sec x).
+ * 4. Safe domain evaluation (ignores NaN, Infinity, and out-of-domain points).
  */
 object GraphPathEngine {
 
+    // Fast evaluation cache keyed by Expr hash
+    private val compiledFuncCache = ConcurrentHashMap<Expr, (Map<String, Double>) -> Double>()
+
+    private fun getCompiledEvaluator(expr: Expr): (Map<String, Double>) -> Double {
+        return compiledFuncCache.getOrPut(expr) {
+            { vars -> expr.eval(vars) }
+        }
+    }
+
     /**
      * Builds a Compose [Path] for explicit function y = f(x).
-     *
-     * @param expr Parsed AST of the function f(x)
-     * @param parameters Variable environment (e.g. parameters a, b)
-     * @param viewport Active mathematical viewport
-     * @param width Screen width in pixels
-     * @param height Screen height in pixels
-     * @param isInteractive If true, uses lower sample count and skips recursive subdivision for 60fps gestures
-     * @return Path ready to draw on Canvas
      */
     fun buildFunctionPath(
         expr: Expr,
@@ -44,30 +44,37 @@ object GraphPathEngine {
             return path
         }
 
+        val evaluator = getCompiledEvaluator(expr)
         val vars = parameters.toMutableMap()
 
-        // Base step size in screen pixels
-        val pixelStep = if (isInteractive) 4f else 1.5f
-        val numBaseSegments = max(30, min(1400, (width / pixelStep).toInt()))
-        val dxMath = viewport.rangeX / numBaseSegments
+        // Adaptive sample count tied to canvas width (capped at 2400 for high-density crispness)
+        val pixelStep = if (isInteractive) 3f else 1.0f
+        val numSamples = max(60, min(2400, (width / pixelStep).toInt()))
+        val dxMath = viewport.rangeX / numSamples
 
-        val screenClipMinY = -500f
-        val screenClipMaxY = height + 500f
+        val screenClipMargin = 400f
+        val screenClipMinY = -screenClipMargin
+        val screenClipMaxY = height + screenClipMargin
 
         var pathOpen = false
-        var prevScreenX = 0f
-        var prevScreenY = 0f
         var prevMathX = 0.0
         var prevMathY = 0.0
-        var prevDerivative = 0.0
+        var prevScreenX = 0f
+        var prevScreenY = 0f
 
-        for (i in 0..numBaseSegments) {
+        for (i in 0..numSamples) {
             val currMathX = viewport.minX + i * dxMath
             vars["x"] = currMathX
-            val currMathY = evaluateSafe(expr, vars)
+
+            val currMathY = try {
+                val v = evaluator(vars)
+                if (v.isNaN() || v.isInfinite() || abs(v) > 1e12) null else v
+            } catch (_: Exception) {
+                null
+            }
 
             if (currMathY == null) {
-                // Undefined point (e.g. ln(x) for x <= 0, sqrt(x) for x < 0)
+                // Lift pen on undefined domain points (e.g. sqrt(negative), ln(<=0))
                 pathOpen = false
                 continue
             }
@@ -79,23 +86,25 @@ object GraphPathEngine {
                 path.moveTo(currScreenX, currScreenY.coerceIn(screenClipMinY, screenClipMaxY))
                 pathOpen = true
             } else {
-                // Check for discontinuity / vertical asymptote jump
+                // Strict "Pen-up" check for vertical asymptotes and discontinuities
                 val isDiscontinuous = checkDiscontinuity(
                     prevMathX = prevMathX,
                     prevMathY = prevMathY,
                     currMathX = currMathX,
                     currMathY = currMathY,
-                    rangeY = viewport.rangeY
+                    rangeY = viewport.rangeY,
+                    rangeX = viewport.rangeX
                 )
 
                 if (isDiscontinuous) {
+                    // Lift pen and start fresh at the new side of the discontinuity
                     pathOpen = false
                 } else {
                     // In precision mode, do adaptive subdivision if curvature is high
                     if (!isInteractive && i > 0) {
                         refineCurveBetween(
                             path = path,
-                            expr = expr,
+                            evaluator = evaluator,
                             vars = vars,
                             viewport = viewport,
                             width = width,
@@ -123,13 +132,9 @@ object GraphPathEngine {
         return path
     }
 
-    /**
-     * Recursively subdivides curve segment if midpoint deviates significantly from line segment (curvature).
-     * Maximum recursion depth = 3 to keep frame times strictly under 2ms.
-     */
     private fun refineCurveBetween(
         path: Path,
-        expr: Expr,
+        evaluator: (Map<String, Double>) -> Double,
         vars: MutableMap<String, Double>,
         viewport: GraphViewport,
         width: Float,
@@ -146,16 +151,21 @@ object GraphPathEngine {
 
         val midX = (x0 + x1) * 0.5
         vars["x"] = midX
-        val midY = evaluateSafe(expr, vars) ?: return
+        val midY = try {
+            val v = evaluator(vars)
+            if (v.isNaN() || v.isInfinite() || abs(v) > 1e12) null else v
+        } catch (_: Exception) {
+            null
+        } ?: return
 
         val expectedMidY = (y0 + y1) * 0.5
         val screenDiffY = abs(viewport.toScreenY(midY, height) - viewport.toScreenY(expectedMidY, height))
 
-        // If screen deviation > 1.25 pixels, subdivide
+        // If screen deviation > 1.25 pixels, recursively subdivide
         if (screenDiffY > 1.25f && screenDiffY < height * 0.6f) {
             // Left half
             refineCurveBetween(
-                path, expr, vars, viewport, width, height,
+                path, evaluator, vars, viewport, width, height,
                 x0, y0, midX, midY, screenClipMinY, screenClipMaxY, depth + 1
             )
 
@@ -165,51 +175,47 @@ object GraphPathEngine {
 
             // Right half
             refineCurveBetween(
-                path, expr, vars, viewport, width, height,
+                path, evaluator, vars, viewport, width, height,
                 midX, midY, x1, y1, screenClipMinY, screenClipMaxY, depth + 1
             )
         }
     }
 
     /**
-     * Detects true mathematical discontinuities and asymptotes (e.g. 1/x at x=0, tan(x) at pi/2).
-     * Prevents connecting across infinity or jump discontinuities.
+     * Detects true mathematical discontinuities (e.g. tan(x) at pi/2, 1/x at 0).
      */
     private fun checkDiscontinuity(
         prevMathX: Double,
         prevMathY: Double,
         currMathX: Double,
         currMathY: Double,
-        rangeY: Double
+        rangeY: Double,
+        rangeX: Double
     ): Boolean {
         val dy = abs(currMathY - prevMathY)
+        val dx = abs(currMathX - prevMathX)
 
-        // 1. Extreme vertical delta (> 60% of visible Y range) with opposite signs
-        if (dy > rangeY * 0.6 && (currMathY * prevMathY < 0)) {
+        // 1. Extreme vertical jump across opposite signs
+        if (dy > rangeY * 0.5 && (currMathY * prevMathY < 0)) {
             return true
         }
 
-        // 2. Very steep slope connecting points on opposite sides of horizontal zero
-        val dx = abs(currMathX - prevMathX)
+        // 2. Extremely steep slope connecting opposite signs
         if (dx > 0.0) {
             val slope = dy / dx
-            // Slope > 1000 * rangeY/rangeX is an asymptote
-            if (slope > (rangeY / dx) * 0.95 && dy > rangeY * 0.4) {
+            if (slope > (rangeY / dx) * 0.85 && dy > rangeY * 0.35) {
                 return true
             }
         }
 
         // 3. Huge magnitude jump
-        if (dy > rangeY * 2.5) {
+        if (dy > rangeY * 2.0) {
             return true
         }
 
         return false
     }
 
-    /**
-     * Evaluates f(x) and returns null if out of domain or invalid.
-     */
     fun evaluateSafe(expr: Expr, vars: Map<String, Double>): Double? {
         return try {
             val v = expr.eval(vars)

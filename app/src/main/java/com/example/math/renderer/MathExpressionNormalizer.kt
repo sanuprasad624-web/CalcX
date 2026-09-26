@@ -240,11 +240,23 @@ object MathExpressionNormalizer {
     }
 
     /**
-     * Clean and sanitize KaTeX string, ensuring balanced braces and escaping issues are resolved.
+     * Clean and sanitize KaTeX string, ensuring balanced braces, security sanitization, and escaping issues are resolved.
      */
     fun sanitizeKatex(latex: String): String {
         var res = latex.trim()
-        // Remove trailing semicolons or unneeded escape backslashes
+
+        // 1. Security sanitization: Strip potentially dangerous raw commands without heavy dependencies
+        val forbiddenCommands = listOf(
+            "\\html", "\\href", "\\url", "\\includegraphics", "\\special",
+            "\\write18", "\\input", "\\include", "\\openin", "\\read", "\\catcode"
+        )
+        for (cmd in forbiddenCommands) {
+            res = res.replace(Regex("${Pattern.quote(cmd)}(?:\\{[^}]*\\}|\\[[^\\]]*\\])*"), "")
+        }
+        res = res.replace(Regex("(?i)<script.*?>.*?</script>"), "")
+        res = res.replace(Regex("(?i)javascript:"), "")
+
+        // 2. Normalize and clean LaTeX symbols
         res = res.replace("\\\\;", " \\; ")
         res = res.replace("\\\\ ", " ")
         res = res.replace("×", "\\times")

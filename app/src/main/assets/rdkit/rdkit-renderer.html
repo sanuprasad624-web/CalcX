@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <script src="RDKit_minimal.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            background-color: transparent !important;
+            background: transparent !important;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        #mol-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            height: 100%;
+        }
+        svg {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="mol-container"></div>
+    <script>
+        var RDKitModule = null;
+        var isReady = false;
+        var pendingTask = null;
+
+        function initRDKit() {
+            if (typeof initRDKitModule === 'function') {
+                initRDKitModule({
+                    locateFile: function(file) {
+                        return file;
+                    }
+                }).then(function(instance) {
+                    RDKitModule = instance;
+                    isReady = true;
+                    if (pendingTask) {
+                        pendingTask();
+                        pendingTask = null;
+                    }
+                    if (window.AndroidBridge && window.AndroidBridge.onReady) {
+                        window.AndroidBridge.onReady();
+                    }
+                }).catch(function(err) {
+                    console.error("RDKit init failed: " + err);
+                    if (window.AndroidBridge && window.AndroidBridge.onError) {
+                        window.AndroidBridge.onError(err ? err.toString() : "RDKit Init Error");
+                    }
+                });
+            }
+        }
+
+        function renderMolecule(smiles, width, height) {
+            if (!isReady || !RDKitModule) {
+                pendingTask = function() { renderMolecule(smiles, width, height); };
+                return;
+            }
+            var container = document.getElementById('mol-container');
+            try {
+                var mol = RDKitModule.get_mol(smiles);
+                if (mol && mol.is_valid()) {
+                    var w = width || container.clientWidth || 250;
+                    var h = height || container.clientHeight || 180;
+                    var svg = mol.get_svg(w, h);
+                    container.innerHTML = svg;
+                    mol.delete();
+                } else {
+                    container.innerHTML = '<span style="color:#ef4444;font-size:13px;font-weight:500;">Invalid Molecule Structure (' + smiles + ')</span>';
+                }
+            } catch (e) {
+                container.innerHTML = '<span style="color:#ef4444;font-size:13px;">Render Error: ' + e.message + '</span>';
+            }
+        }
+
+        function renderReaction(reactionSmiles, width, height) {
+            if (!isReady || !RDKitModule) {
+                pendingTask = function() { renderReaction(reactionSmiles, width, height); };
+                return;
+            }
+            var container = document.getElementById('mol-container');
+            try {
+                var rxn = RDKitModule.get_rxn(reactionSmiles);
+                if (rxn && rxn.is_valid()) {
+                    var w = width || container.clientWidth || 360;
+                    var h = height || container.clientHeight || 160;
+                    var svg = rxn.get_svg(w, h);
+                    container.innerHTML = svg;
+                    rxn.delete();
+                } else {
+                    // Fallback to manual reactants -> products
+                    var parts = reactionSmiles.split('>');
+                    if (parts.length >= 2) {
+                        var rSmiles = parts[0].trim();
+                        var pSmiles = parts[parts.length - 1].trim();
+                        var rMol = rSmiles ? RDKitModule.get_mol(rSmiles) : null;
+                        var pMol = pSmiles ? RDKitModule.get_mol(pSmiles) : null;
+                        var rSvg = rMol && rMol.is_valid() ? rMol.get_svg(140, 140) : rSmiles;
+                        var pSvg = pMol && pMol.is_valid() ? pMol.get_svg(140, 140) : pSmiles;
+                        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;gap:16px;">' +
+                            rSvg + '<span style="font-size:28px;color:#475569;font-weight:bold;">&rarr;</span>' + pSvg + '</div>';
+                        if (rMol) rMol.delete();
+                        if (pMol) pMol.delete();
+                    } else {
+                        container.innerHTML = '<span style="color:#ef4444;font-size:13px;">Invalid Reaction (' + reactionSmiles + ')</span>';
+                    }
+                }
+            } catch (e) {
+                container.innerHTML = '<span style="color:#ef4444;font-size:13px;">Reaction Error: ' + e.message + '</span>';
+            }
+        }
+
+        if (document.readyState === 'complete' || document.readyState === 'interactive') {
+            initRDKit();
+        } else {
+            document.addEventListener('DOMContentLoaded', initRDKit);
+            window.addEventListener('load', initRDKit);
+        }
+    </script>
+</body>
+</html>
