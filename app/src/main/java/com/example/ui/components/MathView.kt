@@ -287,7 +287,7 @@ private fun NativeMathCanvas(
  * Standardized High-Fidelity Math Result Card.
  * Adheres to the full solution rendering pipeline:
  * INPUT → FORMULA → SUBSTITUTION → SIMPLIFICATION → FINAL ANSWER
- * Each mathematical step rendered using KaTeX.
+ * Each mathematical step rendered using high-performance Native Math Canvas (UniversalMathParser / MathNode).
  */
 @Composable
 fun MathResultCard(
@@ -491,7 +491,7 @@ fun MathResultCard(
                 }
             }
 
-            // PRIMARY FINAL ANSWER DISPLAY (KaTeX Rendered)
+            // PRIMARY FINAL ANSWER DISPLAY (Native Math Canvas Rendered)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -509,7 +509,7 @@ fun MathResultCard(
                     )
                 } else {
                     Column {
-                        // Render exact / primary mathematical form using KaTeX Engine
+                        // Render exact / primary mathematical form using Native Math Canvas Engine
                         MathView(
                             result = result,
                             fontSize = 24.sp,

@@ -273,7 +273,21 @@
                     break;
 
                 case 'abs':
-                    mf.write('|');
+                    var cursor = (mathField && mathField.__controller && mathField.__controller.cursor) ? mathField.__controller.cursor : null;
+                    var canStepOut = false;
+                    if (cursor) {
+                        var parentNode = cursor.parent;
+                        var grandParent = parentNode ? parentNode.parent : null;
+                        var isPipeBlock = (grandParent && (grandParent.ctrlSeq === '\\left|' || grandParent.ctrlSeq === '|' || grandParent.ctrlSeq === '\\abs' || (grandParent.sides && grandParent.sides[-1] && grandParent.sides[-1].ch === '|')));
+                        if (isPipeBlock && !cursor[1]) {
+                            canStepOut = true;
+                        }
+                    }
+                    if (canStepOut) {
+                        mf.keystroke('Right');
+                    } else {
+                        mf.typedText('|');
+                    }
                     break;
 
                 case 'power':

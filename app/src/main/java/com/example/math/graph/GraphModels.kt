@@ -3,19 +3,35 @@ package com.example.math.graph
 import androidx.compose.ui.graphics.Color
 import com.example.math.calculus.CalculusParser
 import com.example.math.calculus.Expr
-import com.example.math.editor.MathInputModel
 import kotlin.math.abs
+
+enum class InequalityType {
+    NONE,
+    LESS_THAN,       // < (strict, dashed boundary, shaded below / left)
+    LESS_EQUAL,      // <= (inclusive, solid boundary, shaded below / left)
+    GREATER_THAN,    // > (strict, dashed boundary, shaded above / right)
+    GREATER_EQUAL    // >= (inclusive, solid boundary, shaded above / right)
+}
 
 data class GraphFunction(
     val id: String,
     val expressionText: String,
     val color: Color,
-    val mathModel: MathInputModel = MathInputModel.parseFromFlatString(expressionText),
-    val displayLatex: String = mathModel.toLatex(showCursor = false),
+    val displayLatex: String = expressionText,
     val isVisible: Boolean = true,
     val parsedExpr: Expr? = null,
     val isImplicit: Boolean = false,
     val implicitExpr: Expr? = null,
+    val isXFunctionOfY: Boolean = false,
+    val isVerticalLine: Boolean = false,
+    val verticalX: Double = 0.0,
+    val isParametric: Boolean = false,
+    val parametricX: Expr? = null,
+    val parametricY: Expr? = null,
+    val isPolar: Boolean = false,
+    val tMin: Double = 0.0,
+    val tMax: Double = 2 * Math.PI,
+    val inequalityType: InequalityType = InequalityType.NONE,
     val showDerivative: Boolean = false,
     val showTangent: Boolean = false,
     val tangentX: Double = 1.0,
@@ -55,25 +71,204 @@ data class GraphFunction(
             val evaluatable = com.example.math.calculus.LatexToExprConverter.convertToEvaluatableString(trimmedLatex)
 
             return try {
-                if (evaluatable.contains("=")) {
-                    val parts = evaluatable.split("=")
+                // 0. Parametric point curve: (f(t), g(t))
+                if (evaluatable.startsWith("(") && evaluatable.endsWith(")") && evaluatable.contains(",")) {
+                    val inner = evaluatable.substring(1, evaluatable.length - 1)
+                    val commaIdx = findTopLevelComma(inner)
+                    if (commaIdx != -1) {
+                        val partX = inner.substring(0, commaIdx).trim()
+                        val partY = inner.substring(commaIdx + 1).trim()
+                        val exprX = CalculusParser.parse(partX)
+                        val exprY = CalculusParser.parse(partY)
+                        return GraphFunction(
+                            id = id,
+                            expressionText = trimmedLatex,
+                            color = color,
+                            displayLatex = trimmedLatex,
+                            isParametric = true,
+                            parametricX = exprX,
+                            parametricY = exprY,
+                            tMin = 0.0,
+                            tMax = 2 * Math.PI,
+                            error = null
+                        )
+                    }
+                }
+
+                // Determine operator
+                val op: String?
+                val ineqType: InequalityType
+                when {
+                    evaluatable.contains("<=") -> { op = "<="; ineqType = InequalityType.LESS_EQUAL }
+                    evaluatable.contains(">=") -> { op = ">="; ineqType = InequalityType.GREATER_EQUAL }
+                    evaluatable.contains("<") -> { op = "<"; ineqType = InequalityType.LESS_THAN }
+                    evaluatable.contains(">") -> { op = ">"; ineqType = InequalityType.GREATER_THAN }
+                    evaluatable.contains("=") -> { op = "="; ineqType = InequalityType.NONE }
+                    else -> { op = null; ineqType = InequalityType.NONE }
+                }
+
+                if (op != null) {
+                    val parts = evaluatable.split(op)
                     if (parts.size == 2) {
-                        val lhs = parts[0].trim()
-                        val rhs = parts[1].trim()
-                        if (lhs == "y" && !rhs.contains("y")) {
-                            val parsed = CalculusParser.parse(rhs)
+                        var lhs = parts[0].trim()
+                        while (lhs.startsWith("(") && lhs.endsWith(")")) {
+                            lhs = lhs.substring(1, lhs.length - 1).trim()
+                        }
+                        var rhs = parts[1].trim()
+                        while (rhs.startsWith("(") && rhs.endsWith(")")) {
+                            rhs = rhs.substring(1, rhs.length - 1).trim()
+                        }
+
+                        val leftExpr = CalculusParser.parse(lhs)
+                        val rightExpr = CalculusParser.parse(rhs)
+                        val lhsVars = leftExpr.extractVariables()
+                        val rhsVars = rightExpr.extractVariables()
+
+                        val lhsIsY = (lhs == "y" || (lhsVars == setOf("y") && leftExpr is com.example.math.calculus.Variable))
+                        val rhsIsY = (rhs == "y" || (rhsVars == setOf("y") && rightExpr is com.example.math.calculus.Variable))
+                        val lhsIsX = (lhs == "x" || (lhsVars == setOf("x") && leftExpr is com.example.math.calculus.Variable))
+                        val rhsIsX = (rhs == "x" || (rhsVars == setOf("x") && rightExpr is com.example.math.calculus.Variable))
+                        val lhsIsR = (lhs == "r" || (lhsVars == setOf("r") && leftExpr is com.example.math.calculus.Variable))
+                        val rhsIsR = (rhs == "r" || (rhsVars == setOf("r") && rightExpr is com.example.math.calculus.Variable))
+
+                        val reversedIneq = when (ineqType) {
+                            InequalityType.LESS_THAN -> InequalityType.GREATER_THAN
+                            InequalityType.LESS_EQUAL -> InequalityType.GREATER_EQUAL
+                            InequalityType.GREATER_THAN -> InequalityType.LESS_THAN
+                            InequalityType.GREATER_EQUAL -> InequalityType.LESS_EQUAL
+                            InequalityType.NONE -> InequalityType.NONE
+                        }
+
+                        // 1. Polar equations: r = f(theta), r = f(t), r <= f(theta), etc.
+                        if (lhsIsR && "r" !in rhsVars) {
                             GraphFunction(
                                 id = id,
                                 expressionText = trimmedLatex,
                                 color = color,
                                 displayLatex = trimmedLatex,
-                                parsedExpr = parsed,
-                                isImplicit = false,
+                                parsedExpr = rightExpr,
+                                isPolar = true,
+                                inequalityType = ineqType,
                                 error = null
                             )
-                        } else {
-                            val leftExpr = CalculusParser.parse(lhs)
-                            val rightExpr = CalculusParser.parse(rhs)
+                        } else if (rhsIsR && "r" !in lhsVars) {
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = leftExpr,
+                                isPolar = true,
+                                inequalityType = reversedIneq,
+                                error = null
+                            )
+                        }
+                        // 2. Explicit in y: y <= f(x), y = f(x)
+                        else if (lhsIsY && "y" !in rhsVars) {
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = rightExpr,
+                                isImplicit = false,
+                                inequalityType = ineqType,
+                                error = null
+                            )
+                        }
+                        // 3. Reverse explicit in y: f(x) >= y -> y <= f(x)
+                        else if (rhsIsY && "y" !in lhsVars) {
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = leftExpr,
+                                isImplicit = false,
+                                inequalityType = reversedIneq,
+                                error = null
+                            )
+                        }
+                        // 4. Vertical line: x = c, x <= c (RHS is constant expression)
+                        else if (lhsIsX && rhsVars.isEmpty()) {
+                            val constVal = try { rightExpr.eval(emptyMap()) } catch (_: Exception) { 0.0 }
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = rightExpr,
+                                isVerticalLine = true,
+                                verticalX = constVal,
+                                inequalityType = ineqType,
+                                error = null
+                            )
+                        } else if (rhsIsX && lhsVars.isEmpty()) {
+                            val constVal = try { leftExpr.eval(emptyMap()) } catch (_: Exception) { 0.0 }
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = leftExpr,
+                                isVerticalLine = true,
+                                verticalX = constVal,
+                                inequalityType = reversedIneq,
+                                error = null
+                            )
+                        }
+                        // 5. Horizontal curves / waves: x = f(y) or x = f(t) (where RHS has y or t or theta, but NOT x)
+                        else if (lhsIsX && ("y" in rhsVars || "t" in rhsVars || "θ" in rhsVars || "theta" in rhsVars) && "x" !in rhsVars) {
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = rightExpr,
+                                isXFunctionOfY = true,
+                                inequalityType = ineqType,
+                                error = null
+                            )
+                        } else if (rhsIsX && ("y" in lhsVars || "t" in lhsVars || "θ" in lhsVars || "theta" in lhsVars) && "x" !in lhsVars) {
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = leftExpr,
+                                isXFunctionOfY = true,
+                                inequalityType = reversedIneq,
+                                error = null
+                            )
+                        }
+                        // 6. Isolated sqrt(y): sqrt(y) = f(x)
+                        else if ((lhs == "sqrt(y)" || lhs == "(sqrt(y))" || lhs == "y^(1/2)" || lhs == "y^(0.5)") && "y" !in rhsVars) {
+                            val squared = com.example.math.calculus.Pow(rightExpr, com.example.math.calculus.Constant(2.0))
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = squared,
+                                isImplicit = false,
+                                inequalityType = ineqType,
+                                error = null
+                            )
+                        } else if ((rhs == "sqrt(y)" || rhs == "(sqrt(y))" || rhs == "y^(1/2)" || rhs == "y^(0.5)") && "y" !in lhsVars) {
+                            val squared = com.example.math.calculus.Pow(leftExpr, com.example.math.calculus.Constant(2.0))
+                            GraphFunction(
+                                id = id,
+                                expressionText = trimmedLatex,
+                                color = color,
+                                displayLatex = trimmedLatex,
+                                parsedExpr = squared,
+                                isImplicit = false,
+                                inequalityType = reversedIneq,
+                                error = null
+                            )
+                        }
+                        // 7. General Implicit 2D Curves / Relations (circles, hyperbolas, ellipses, conics, inequalities)
+                        else {
                             val diff = com.example.math.calculus.Sub(leftExpr, rightExpr).simplify()
                             GraphFunction(
                                 id = id,
@@ -83,28 +278,35 @@ data class GraphFunction(
                                 parsedExpr = diff,
                                 isImplicit = true,
                                 implicitExpr = diff,
+                                inequalityType = ineqType,
                                 error = null
                             )
                         }
                     } else {
                         val parsed = CalculusParser.parse(evaluatable)
+                        val varsInExpr = parsed.extractVariables()
+                        val isPolar = ("theta" in varsInExpr || "θ" in varsInExpr)
                         GraphFunction(
                             id = id,
                             expressionText = trimmedLatex,
                             color = color,
                             displayLatex = trimmedLatex,
                             parsedExpr = parsed,
+                            isPolar = isPolar,
                             error = null
                         )
                     }
                 } else {
                     val parsed = CalculusParser.parse(evaluatable)
+                    val varsInExpr = parsed.extractVariables()
+                    val isPolar = ("theta" in varsInExpr || "θ" in varsInExpr)
                     GraphFunction(
                         id = id,
                         expressionText = trimmedLatex,
                         color = color,
                         displayLatex = trimmedLatex,
                         parsedExpr = parsed,
+                        isPolar = isPolar,
                         error = null
                     )
                 }
@@ -118,6 +320,18 @@ data class GraphFunction(
                     error = e.message ?: "Invalid syntax"
                 )
             }
+        }
+
+        private fun findTopLevelComma(str: String): Int {
+            var depth = 0
+            for (i in str.indices) {
+                when (str[i]) {
+                    '(', '{', '[' -> depth++
+                    ')', '}', ']' -> depth--
+                    ',' -> if (depth == 0) return i
+                }
+            }
+            return -1
         }
 
         fun create(id: String, expr: String, colorIndex: Int = 0): GraphFunction {

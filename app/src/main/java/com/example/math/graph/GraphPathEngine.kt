@@ -65,6 +65,9 @@ object GraphPathEngine {
         for (i in 0..numSamples) {
             val currMathX = viewport.minX + i * dxMath
             vars["x"] = currMathX
+            vars["t"] = currMathX
+            vars["theta"] = currMathX
+            vars["θ"] = currMathX
 
             val currMathY = try {
                 val v = evaluator(vars)
@@ -151,6 +154,9 @@ object GraphPathEngine {
 
         val midX = (x0 + x1) * 0.5
         vars["x"] = midX
+        vars["t"] = midX
+        vars["theta"] = midX
+        vars["θ"] = midX
         val midY = try {
             val v = evaluator(vars)
             if (v.isNaN() || v.isInfinite() || abs(v) > 1e12) null else v
@@ -223,5 +229,198 @@ object GraphPathEngine {
         } catch (_: Exception) {
             null
         }
+    }
+
+    /**
+     * Builds a Compose [Path] for horizontal functions where x is given in terms of y or t: x = f(y) / x = f(t).
+     */
+    fun buildXFunctionOfYPath(
+        expr: Expr,
+        parameters: Map<String, Double>,
+        viewport: GraphViewport,
+        width: Float,
+        height: Float,
+        isInteractive: Boolean = false
+    ): Path {
+        val path = Path()
+        if (width <= 0f || height <= 0f || viewport.rangeX <= 0.0 || viewport.rangeY <= 0.0) {
+            return path
+        }
+
+        val evaluator = getCompiledEvaluator(expr)
+        val vars = parameters.toMutableMap()
+
+        val pixelStep = if (isInteractive) 3f else 1.0f
+        val numSamples = max(60, min(2400, (height / pixelStep).toInt()))
+        val dyMath = viewport.rangeY / numSamples
+
+        val screenClipMargin = 400f
+        val screenClipMinX = -screenClipMargin
+        val screenClipMaxX = width + screenClipMargin
+
+        var pathOpen = false
+        var prevMathY = 0.0
+        var prevMathX = 0.0
+        var prevScreenY = 0f
+        var prevScreenX = 0f
+
+        for (i in 0..numSamples) {
+            val currMathY = viewport.minY + i * dyMath
+            vars["y"] = currMathY
+            vars["t"] = currMathY
+            vars["theta"] = currMathY
+            vars["θ"] = currMathY
+
+            val currMathX = try {
+                val v = evaluator(vars)
+                if (v.isNaN() || v.isInfinite() || abs(v) > 1e12) null else v
+            } catch (_: Exception) {
+                null
+            }
+
+            if (currMathX == null) {
+                pathOpen = false
+                continue
+            }
+
+            val currScreenX = viewport.toScreenX(currMathX, width)
+            val currScreenY = viewport.toScreenY(currMathY, height)
+
+            if (!pathOpen) {
+                path.moveTo(currScreenX.coerceIn(screenClipMinX, screenClipMaxX), currScreenY)
+                pathOpen = true
+            } else {
+                val isDiscontinuous = checkDiscontinuity(
+                    prevMathX = prevMathY,
+                    prevMathY = prevMathX,
+                    currMathX = currMathY,
+                    currMathY = currMathX,
+                    rangeY = viewport.rangeX,
+                    rangeX = viewport.rangeY
+                )
+
+                if (isDiscontinuous) {
+                    pathOpen = false
+                } else {
+                    path.lineTo(currScreenX.coerceIn(screenClipMinX, screenClipMaxX), currScreenY)
+                }
+            }
+
+            prevMathY = currMathY
+            prevMathX = currMathX
+            prevScreenY = currScreenY
+            prevScreenX = currScreenX
+        }
+
+        return path
+    }
+
+    /**
+     * Builds a Compose [Path] for polar curves r = f(theta) / r = f(t).
+     */
+    fun buildPolarPath(
+        expr: Expr,
+        parameters: Map<String, Double>,
+        viewport: GraphViewport,
+        width: Float,
+        height: Float,
+        isInteractive: Boolean = false
+    ): Path {
+        val path = Path()
+        if (width <= 0f || height <= 0f) return path
+
+        val evaluator = getCompiledEvaluator(expr)
+        val vars = parameters.toMutableMap()
+
+        val numSamples = if (isInteractive) 800 else 2400
+        val tMin = 0.0
+        val tMax = 12.0 * Math.PI
+        val dt = (tMax - tMin) / numSamples
+
+        var pathOpen = false
+        for (i in 0..numSamples) {
+            val t = tMin + i * dt
+            vars["t"] = t
+            vars["theta"] = t
+            vars["θ"] = t
+
+            val r = try {
+                val v = evaluator(vars)
+                if (v.isNaN() || v.isInfinite() || abs(v) > 1e6) null else v
+            } catch (_: Exception) {
+                null
+            }
+
+            if (r == null) {
+                pathOpen = false
+                continue
+            }
+
+            val mathX = r * kotlin.math.cos(t)
+            val mathY = r * kotlin.math.sin(t)
+
+            val sx = viewport.toScreenX(mathX, width)
+            val sy = viewport.toScreenY(mathY, height)
+
+            if (!pathOpen) {
+                path.moveTo(sx, sy)
+                pathOpen = true
+            } else {
+                path.lineTo(sx, sy)
+            }
+        }
+        return path
+    }
+
+    /**
+     * Builds a Compose [Path] for parametric curves (x(t), y(t)).
+     */
+    fun buildParametricPath(
+        exprX: Expr,
+        exprY: Expr,
+        tMin: Double,
+        tMax: Double,
+        parameters: Map<String, Double>,
+        viewport: GraphViewport,
+        width: Float,
+        height: Float,
+        isInteractive: Boolean = false
+    ): Path {
+        val path = Path()
+        if (width <= 0f || height <= 0f) return path
+
+        val evalX = getCompiledEvaluator(exprX)
+        val evalY = getCompiledEvaluator(exprY)
+        val vars = parameters.toMutableMap()
+
+        val numSamples = if (isInteractive) 600 else 1800
+        val dt = (tMax - tMin) / numSamples
+
+        var pathOpen = false
+        for (i in 0..numSamples) {
+            val t = tMin + i * dt
+            vars["t"] = t
+            vars["θ"] = t
+            vars["theta"] = t
+
+            val x = try { val v = evalX(vars); if (v.isNaN() || v.isInfinite()) null else v } catch (_: Exception) { null }
+            val y = try { val v = evalY(vars); if (v.isNaN() || v.isInfinite()) null else v } catch (_: Exception) { null }
+
+            if (x == null || y == null) {
+                pathOpen = false
+                continue
+            }
+
+            val sx = viewport.toScreenX(x, width)
+            val sy = viewport.toScreenY(y, height)
+
+            if (!pathOpen) {
+                path.moveTo(sx, sy)
+                pathOpen = true
+            } else {
+                path.lineTo(sx, sy)
+            }
+        }
+        return path
     }
 }

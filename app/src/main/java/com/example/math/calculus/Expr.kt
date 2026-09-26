@@ -8,6 +8,7 @@ sealed interface Expr {
     fun eval(vars: Map<String, Double> = emptyMap()): Double
     fun differentiate(v: String = "x"): Expr
     fun simplify(): Expr
+    fun extractVariables(): Set<String>
     fun toLatex(): String
     fun toDisplayString(): String
 }
@@ -18,6 +19,8 @@ data class Constant(val value: Double, val fraction: Fraction? = null) : Expr {
     override fun differentiate(v: String): Expr = Constant(0.0)
 
     override fun simplify(): Expr = this
+
+    override fun extractVariables(): Set<String> = emptySet()
 
     override fun toLatex(): String {
         if (fraction != null && fraction.denominator != BigInteger.ONE) {
@@ -67,6 +70,11 @@ data class Variable(val name: String = "x") : Expr {
 
     override fun simplify(): Expr = this
 
+    override fun extractVariables(): Set<String> {
+        val l = name.lowercase()
+        return if (l == "pi" || l == "e") emptySet() else setOf(name)
+    }
+
     override fun toLatex(): String = when (name.lowercase()) {
         "pi" -> "\\pi"
         "theta" -> "\\theta"
@@ -100,6 +108,8 @@ data class Add(val left: Expr, val right: Expr) : Expr {
         return Add(l, r)
     }
 
+    override fun extractVariables(): Set<String> = left.extractVariables() + right.extractVariables()
+
     override fun toLatex(): String = "${left.toLatex()} + ${right.toLatex()}"
     override fun toDisplayString(): String = "${left.toDisplayString()} + ${right.toDisplayString()}"
 }
@@ -119,6 +129,8 @@ data class Sub(val left: Expr, val right: Expr) : Expr {
         }
         return Sub(l, r)
     }
+
+    override fun extractVariables(): Set<String> = left.extractVariables() + right.extractVariables()
 
     override fun toLatex(): String {
         val rightStr = if (right is Add || right is Sub) "\\left(${right.toLatex()}\\right)" else right.toLatex()
@@ -155,6 +167,8 @@ data class Mul(val left: Expr, val right: Expr) : Expr {
         }
         return Mul(l, r)
     }
+
+    override fun extractVariables(): Set<String> = left.extractVariables() + right.extractVariables()
 
     override fun toLatex(): String {
         val lStr = if (left is Add || left is Sub) "\\left(${left.toLatex()}\\right)" else left.toLatex()
@@ -206,6 +220,8 @@ data class Div(val left: Expr, val right: Expr) : Expr {
         return Div(l, r)
     }
 
+    override fun extractVariables(): Set<String> = left.extractVariables() + right.extractVariables()
+
     override fun toLatex(): String = "\\frac{${left.toLatex()}}{${right.toLatex()}}"
     override fun toDisplayString(): String {
         val lStr = if (left is Add || left is Sub) "(${left.toDisplayString()})" else left.toDisplayString()
@@ -256,6 +272,8 @@ data class Pow(val base: Expr, val exp: Expr) : Expr {
         return Pow(b, e)
     }
 
+    override fun extractVariables(): Set<String> = base.extractVariables() + exp.extractVariables()
+
     override fun toLatex(): String {
         val baseStr = if (base is Add || base is Sub || base is Mul || base is Div || base is Neg) {
             "\\left(${base.toLatex()}\\right)"
@@ -288,6 +306,8 @@ data class Neg(val inner: Expr) : Expr {
         if (inn is Neg) return inn.inner
         return Neg(inn)
     }
+
+    override fun extractVariables(): Set<String> = inner.extractVariables()
 
     override fun toLatex(): String {
         val inStr = if (inner is Add || inner is Sub) "\\left(${inner.toLatex()}\\right)" else inner.toLatex()
@@ -359,6 +379,8 @@ data class Func(val name: String, val arg: Expr) : Expr {
         }
         return Mul(derivFunc, du).simplify()
     }
+
+    override fun extractVariables(): Set<String> = arg.extractVariables()
 
     override fun simplify(): Expr {
         val s = arg.simplify()

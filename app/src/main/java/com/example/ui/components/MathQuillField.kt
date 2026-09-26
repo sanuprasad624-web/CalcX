@@ -151,11 +151,15 @@ fun MathQuillField(
     val currentOnEnter by rememberUpdatedState(onEnter)
     val currentOnFocused by rememberUpdatedState(onFocused)
 
+    // Track the latest latex value reported by this component itself
+    var lastSelfReportedLatex by remember { mutableStateOf<String?>(null) }
+
     // Bridge instance
     val bridge = remember {
         object {
             @JavascriptInterface
             fun onLatexChange(newLatex: String) {
+                lastSelfReportedLatex = newLatex
                 currentOnLatexChange(newLatex)
             }
 
@@ -188,11 +192,10 @@ fun MathQuillField(
         }
     }
 
-    // Update latex if changed from outside
-    var lastKnownLatex by remember { mutableStateOf(latex) }
+    // Update latex ONLY if changed from outside (e.g. initial load, undo/redo, formula insert)
     LaunchedEffect(latex) {
-        if (latex != lastKnownLatex) {
-            lastKnownLatex = latex
+        if (latex != lastSelfReportedLatex) {
+            lastSelfReportedLatex = latex
             activeController.setLatex(latex)
         }
     }

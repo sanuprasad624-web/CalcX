@@ -26,7 +26,7 @@ object ImplicitPlotter {
         isInteractive: Boolean = false
     ): List<LineSegment> {
         val segments = mutableListOf<LineSegment>()
-        val gridSize = if (isInteractive) 45 else 85
+        val gridSize = if (isInteractive) 90 else 180
         val nx = gridSize
         val ny = gridSize
 
@@ -36,18 +36,21 @@ object ImplicitPlotter {
         val values = Array(nx + 1) { DoubleArray(ny + 1) }
         val vars = parameters.toMutableMap()
 
-        // 1. Evaluate grid
+        // 1. Evaluate grid (preserving NaN for points outside the function domain)
         for (i in 0..nx) {
             val x = viewport.minX + i * dxMath
             vars["x"] = x
             for (j in 0..ny) {
                 val y = viewport.minY + j * dyMath
                 vars["y"] = y
+                vars["t"] = y
+                vars["θ"] = y
+                vars["theta"] = y
                 values[i][j] = try {
                     val v = expr.eval(vars)
-                    if (v.isNaN() || v.isInfinite()) 0.0 else v
+                    if (v.isNaN() || v.isInfinite()) Double.NaN else v
                 } catch (_: Exception) {
-                    0.0
+                    Double.NaN
                 }
             }
         }
@@ -61,8 +64,9 @@ object ImplicitPlotter {
         // Interpolate zero crossing on edge
         fun interp(v1: Double, v2: Double, pos1: Double, pos2: Double): Double {
             val denom = v2 - v1
-            if (abs(denom) < 1e-12) return (pos1 + pos2) / 2.0
+            if (abs(denom) < 1e-15 || denom.isNaN() || denom.isInfinite()) return (pos1 + pos2) / 2.0
             val t = (-v1) / denom
+            if (t.isNaN() || t.isInfinite()) return (pos1 + pos2) / 2.0
             return pos1 + t.coerceIn(0.0, 1.0) * (pos2 - pos1)
         }
 
@@ -78,6 +82,11 @@ object ImplicitPlotter {
                 val v1 = values[i + 1][j]     // Bottom-right
                 val v2 = values[i + 1][j + 1] // Top-right
                 val v3 = values[i][j + 1]     // Top-left
+
+                // CRITICAL DOMAIN CHECK: If any vertex is NaN / out-of-domain, no mathematical contour can pass through this cell
+                if (v0.isNaN() || v1.isNaN() || v2.isNaN() || v3.isNaN()) {
+                    continue
+                }
 
                 var caseIndex = 0
                 if (v0 > 0) caseIndex = caseIndex or 1
@@ -117,6 +126,57 @@ object ImplicitPlotter {
         }
 
         return segments
+    }
+
+    /**
+     * Solves and generates filled rectangles for implicit inequality regions F(x, y) <= 0 or F(x, y) >= 0.
+     */
+    fun plotImplicitShading(
+        expr: Expr,
+        inequalityType: InequalityType,
+        parameters: Map<String, Double>,
+        viewport: GraphViewport,
+        width: Float,
+        height: Float,
+        isInteractive: Boolean = false
+    ): List<androidx.compose.ui.geometry.Rect> {
+        val rects = mutableListOf<androidx.compose.ui.geometry.Rect>()
+        val gridSize = if (isInteractive) 35 else 65
+        val nx = gridSize
+        val ny = gridSize
+
+        val dxMath = viewport.rangeX / nx
+        val dyMath = viewport.rangeY / ny
+        val cellW = width / nx
+        val cellH = height / ny
+        val vars = parameters.toMutableMap()
+
+        for (i in 0 until nx) {
+            val cx = viewport.minX + (i + 0.5) * dxMath
+            vars["x"] = cx
+            val sx = i * cellW
+            for (j in 0 until ny) {
+                val cy = viewport.minY + (j + 0.5) * dyMath
+                vars["y"] = cy
+                val sy = height - (j + 1) * cellH
+                val v = try {
+                    val res = expr.eval(vars)
+                    if (res.isNaN() || res.isInfinite()) null else res
+                } catch (_: Exception) {
+                    null
+                } ?: continue
+
+                val satisfies = when (inequalityType) {
+                    InequalityType.LESS_THAN, InequalityType.LESS_EQUAL -> v <= 0.0
+                    InequalityType.GREATER_THAN, InequalityType.GREATER_EQUAL -> v >= 0.0
+                    InequalityType.NONE -> false
+                }
+                if (satisfies) {
+                    rects.add(androidx.compose.ui.geometry.Rect(sx, sy, sx + cellW + 0.5f, sy + cellH + 0.5f))
+                }
+            }
+        }
+        return rects
     }
 
     /**

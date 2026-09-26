@@ -20,6 +20,7 @@ object LatexToExprConverter {
         s = s.replace("\\right]", "]")
         s = s.replace("\\left|", "abs(")
         s = s.replace("\\right|", ")")
+        s = s.replace(Regex("""\|([^|]+)\|"""), "abs($1)")
         s = s.replace("\\left.", "")
         s = s.replace("\\right.", "")
         s = s.replace("\\displaystyle", "")
@@ -57,6 +58,27 @@ object LatexToExprConverter {
         s = s.replace("sec^-1", "asec")
         s = s.replace("csc^-1", "acsc")
 
+        // 4b. Function Powers / Exponents: \sin^{2}(x) -> ((sin(x))^(2)), \cos^3(x) -> ((cos(x))^(3))
+        val trigFuncs = listOf(
+            "sinh", "cosh", "tanh", "coth", "sech", "csch",
+            "sin", "cos", "tan", "cot", "sec", "csc", "cosec",
+            "ln", "log", "exp"
+        )
+        for (f in trigFuncs) {
+            val regexWithBraces = Regex("""(?:\\)?$f\^\{([^}]+)\}\s*(?:\(([^)]+)\)|([a-zA-Z0-9_]+))""")
+            s = s.replace(regexWithBraces) { match ->
+                val power = match.groupValues[1]
+                val arg = if (match.groupValues[2].isNotEmpty()) match.groupValues[2] else match.groupValues[3]
+                "(($f($arg))^($power))"
+            }
+            val regexBarePower = Regex("""(?:\\)?$f\^([0-9]+)\s*(?:\(([^)]+)\)|([a-zA-Z0-9_]+))""")
+            s = s.replace(regexBarePower) { match ->
+                val power = match.groupValues[1]
+                val arg = if (match.groupValues[2].isNotEmpty()) match.groupValues[2] else match.groupValues[3]
+                "(($f($arg))^($power))"
+            }
+        }
+
         // 5. Common trigonometric and math function commands
         val funcs = listOf("sinh", "cosh", "tanh", "coth", "sech", "csch", "sin", "cos", "tan", "cot", "sec", "csc", "cosec", "arcsin", "arccos", "arctan", "arccot", "arcsec", "arccsc", "asin", "acos", "atan", "acot", "asec", "acsc", "ln", "log", "exp", "abs", "round", "floor", "ceil")
         for (f in funcs) {
@@ -74,6 +96,10 @@ object LatexToExprConverter {
         s = s.replace("\\ge", " >= ")
         s = s.replace("\\leq", " <= ")
         s = s.replace("\\geq", " >= ")
+        s = s.replace("\\lt", " < ")
+        s = s.replace("\\gt", " > ")
+        s = s.replace("≤", " <= ")
+        s = s.replace("≥", " >= ")
         s = s.replace("\\neq", " != ")
         s = s.replace("\\approx", " = ")
 
@@ -87,7 +113,35 @@ object LatexToExprConverter {
         s = s.replace("\\", "")
         s = s.replace(Regex("\\s+"), " ")
 
+        // 10. Balance parentheses automatically to prevent parse failures from extra or missing brackets
+        s = balanceParentheses(s)
+
         return s.trim()
+    }
+
+    private fun balanceParentheses(input: String): String {
+        val sb = StringBuilder()
+        var currentOpen = 0
+        for (ch in input) {
+            if (ch == '(') {
+                currentOpen++
+                sb.append(ch)
+            } else if (ch == ')') {
+                if (currentOpen > 0) {
+                    currentOpen--
+                    sb.append(ch)
+                }
+                // Discard extra unmatched closing parenthesis
+            } else {
+                sb.append(ch)
+            }
+        }
+        // Append missing closing parens
+        while (currentOpen > 0) {
+            sb.append(')')
+            currentOpen--
+        }
+        return sb.toString()
     }
 
     private fun unpackFractions(input: String): String {

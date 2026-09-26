@@ -24,6 +24,13 @@ class CalculusParser(private val input: String) {
         if (text.isBlank()) return Constant(0.0)
         pos = 0
         val expr = parseAddSub()
+        skipWhitespace()
+        if (pos < text.length) {
+            val remaining = text.substring(pos).trim()
+            if (remaining.isNotEmpty() && remaining != ")" && remaining != "}") {
+                throw IllegalArgumentException("Unexpected token at '$remaining'")
+            }
+        }
         return expr.simplify()
     }
 
@@ -186,6 +193,12 @@ class CalculusParser(private val input: String) {
                     while (pos < text.length && text[pos] != '}') pos++
                     powerStr = text.substring(pStart, pos)
                     if (pos < text.length && text[pos] == '}') pos++
+                } else if (pos < text.length && text[pos] == '(') {
+                    pos++
+                    val pStart = pos
+                    while (pos < text.length && text[pos] != ')') pos++
+                    powerStr = text.substring(pStart, pos)
+                    if (pos < text.length && text[pos] == ')') pos++
                 } else if (pos < text.length && (text[pos] == '-' || text[pos] == '+')) {
                     val pStart = pos
                     pos++
